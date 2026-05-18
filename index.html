@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Dikey Bilardo Kaosu (Anında Başlatma)</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #2c3e50;
+            color: white;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow: hidden; 
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        h2 {
+            margin: 10px 0 5px 0;
+            font-size: 20px;
+        }
+
+        #gameWrapper {
+            width: 100%;
+            max-width: 400px; 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 5px;
+            box-sizing: border-box;
+        }
+
+        canvas {
+            background-color: #27ae60;
+            border: 6px solid #8e44ad;
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.6);
+            /* MOBİL ÇÖZÜM: height: auto kaldırıldı. Tarayıcı genişliğe göre yüksekliği otomatik bulacak */
+            width: 100%;
+            max-width: 100%;
+            display: block;
+            touch-action: none; 
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        #hudContainer {
+            width: 100%;
+            height: 25px;
+            background-color: rgba(0, 0, 0, 0.4);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 6px;
+            margin-top: 10px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
+        }
+
+        #hudFill {
+            height: 100%;
+            width: 0%;
+            background-color: rgb(0, 255, 40);
+            transition: width 0.05s linear;
+        }
+
+        #hudText {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 13px;
+            text-shadow: 1px 1px 2px black; 
+            pointer-events: none; 
+        }
+
+        #info {
+            margin-top: 10px;
+            text-align: center;
+            background: rgba(0,0,0,0.2);
+            padding: 8px;
+            border-radius: 8px;
+            font-size: 13px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        
+        #ballCount {
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="gameWrapper">
+        <h2>Dikey Bilardo Kaosu</h2>
+        
+        <!-- Kesin ölçüler HTML üzerinde verildi -->
+        <canvas id="gameCanvas" width="400" height="800"></canvas>
+        
+        <div id="hudContainer">
+            <div id="hudFill"></div>
+            <div id="hudText">HIZ: 0.0</div>
+        </div>
+
+        <div id="info">
+            <p style="margin: 0 0 5px 0;">Beyaz topu aşağı çek ve bırak!</p>
+            <p style="margin: 0;">Top Sayısı: <strong id="ballCount">0</strong> / 100</p>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const ballCountEl = document.getElementById('ballCount');
+        const hudFillEl = document.getElementById('hudFill');
+        const hudTextEl = document.getElementById('hudText');
+
+        const FRICTION = 0.985; 
+        const MAX_BALLS = 100;  
+        const MIN_SPEED_TO_SPLIT = 1.0; 
+        const MAX_SPEED = 30; 
+
+        let balls = [];
+        
+        let pockets = [
+            {x: 0, y: 0, r: 35}, {x: 400, y: 0, r: 35},       
+            {x: 0, y: 400, r: 25}, {x: 400, y: 400, r: 25},   
+            {x: 0, y: 800, r: 35}, {x: 400, y: 800, r: 35}    
+        ];
+
+        let isDragging = false;
+        let dragStart = {x: 0, y: 0};
+        let dragCurrent = {x: 0, y: 0};
+        let cueBall = null;
+
+        let gameState = 'playing'; 
+        let ballIdCounter = 1; 
+
+        class Ball {
+            constructor(x, y, radius, color, type, number = 0) {
+                this.x = Number.isFinite(x) ? x : 200; 
+                this.y = Number.isFinite(y) ? y : 400;
+                this.vx = 0;
+                this.vy = 0;
+                this.radius = radius;
+                this.color = color;
+                this.type = type; 
+                this.mass = 1;
+                this.number = number; 
+                this.multiplyCooldown = 15; 
+            }
+
+            draw() {
+                if (!Number.isFinite(this.x) || !Number.isFinite(this.y)) {
+                    this.x = 200; this.y = 400; this.vx = 0; this.vy = 0;
+                }
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                
+                ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+                ctx.arc(this.x - 3, this.y - 3, this.radius / 3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.closePath();
+
+                if (this.type === 'target') {
+                    ctx.fillStyle = 'white';
+                    ctx.font = 'bold 12px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(this.number, this.x, this.y);
+                }
+            }
+
+            update() {
+                if (this.multiplyCooldown > 0) this.multiplyCooldown--;
+
+                let currentSpeed = Math.hypot(this.vx, this.vy);
+                if (currentSpeed > MAX_SPEED) {
+                    let ratio = MAX_SPEED / currentSpeed;
+                    this.vx *= ratio;
+                    this.vy *= ratio;
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                this.vx *= FRICTION;
+                this.vy *= FRICTION;
+
+                if (Math.abs(this.vx) < 0.05) this.vx = 0;
+                if (Math.abs(this.vy) < 0.05) this.vy = 0;
+
+                let hitWall = false;
+                
+                if (this.x - this.radius <= 0) {
+                    this.x = this.radius; this.vx *= -1; hitWall = true;
+                } else if (this.x + this.radius >= canvas.width) {
+                    this.x = canvas.width - this.radius; this.vx *= -1; hitWall = true;
+                }
+                
+                if (this.y - this.radius <= 0) {
+                    this.y = this.radius; this.vy *= -1; hitWall = true;
+                } else if (this.y + this.radius >= canvas.height) {
+                    this.y = canvas.height - this.radius; this.vy *= -1; hitWall = true;
+                }
+
+                if (hitWall && this.type === 'target' && currentSpeed > MIN_SPEED_TO_SPLIT && this.multiplyCooldown === 0 && balls.length < MAX_BALLS) {
+                    this.multiply();
+                }
+            }
+
+            multiply() {
+                this.multiplyCooldown = 15; 
+                ballIdCounter++; 
+                let newBall = new Ball(this.x, this.y, this.radius, '#ff0000', 'target', ballIdCounter);
+                
+                this.vx *= 0.8;
+                this.vy *= 0.8;
+                
+                newBall.vx = this.vx + (Math.random() * 6 - 3);
+                newBall.vy = this.vy + (Math.random() * 6 - 3);
+                newBall.multiplyCooldown = 15; 
+                
+                balls.push(newBall);
+            }
+        }
+
+        function initGame() {
+            gameState = 'playing';
+            balls = [];
+            ballIdCounter = 1;
+            
+            cueBall = new Ball(200, 600, 15, '#ecf0f1', 'cue'); 
+            let targetBall = new Ball(200, 200, 15, '#ff0000', 'target', ballIdCounter); 
+            
+            balls.push(cueBall, targetBall);
+            
+            // İlk açılışta top sayısını hemen ekrana yazdır
+            ballCountEl.innerText = balls.length;
+        }
+
+        function checkCollisions() {
+            for (let i = 0; i < balls.length; i++) {
+                for (let j = i + 1; j < balls.length; j++) {
+                    let b1 = balls[i];
+                    let b2 = balls[j];
+                    
+                    let dx = b2.x - b1.x;
+                    let dy = b2.y - b1.y;
+                    let dist = Math.hypot(dx, dy);
+
+                    if (dist < 0.1) {
+                        dx = (Math.random() - 0.5) * 0.5;
+                        dy = (Math.random() - 0.5) * 0.5;
+                        dist = Math.hypot(dx, dy) || 0.1;
+                    }
+
+                    if (dist < b1.radius + b2.radius) {
+                        let overlap = (b1.radius + b2.radius - dist) / 2;
+                        let nx = dx / dist;
+                        let ny = dy / dist;
+                        
+                        b1.x -= nx * overlap; b1.y -= ny * overlap;
+                        b2.x += nx * overlap; b2.y += ny * overlap;
+
+                        let kx = b1.vx - b2.vx;
+                        let ky = b1.vy - b2.vy;
+                        let p = 2 * (nx * kx + ny * ky) / (b1.mass + b2.mass);
+
+                        b1.vx -= p * b2.mass * nx;
+                        b1.vy -= p * b2.mass * ny;
+                        b2.vx += p * b1.mass * nx;
+                        b2.vy += p * b1.mass * ny;
+                    }
+                }
+            }
+        }
+
+        function checkPockets() {
+            for (let i = balls.length - 1; i >= 0; i--) {
+                let ball = balls[i];
+
+                for (let pocket of pockets) {
+                    let dist = Math.hypot(ball.x - pocket.x, ball.y - pocket.y);
+                    if (dist < pocket.r) {
+                        if (ball.type === 'cue') {
+                            ball.x = 200;
+                            ball.y = 600;
+                            ball.vx = 0;
+                            ball.vy = 0;
+                        } else {
+                            balls.splice(i, 1);
+                        }
+                        break; 
+                    }
+                }
+            }
+        }
+
+        function drawEndScreen(title, subtitle, color) {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)'; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = color;
+            ctx.font = 'bold 36px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(title, canvas.width / 2, canvas.height / 2 - 30);
+            
+            ctx.fillStyle = 'white';
+            ctx.font = '16px Arial';
+            ctx.fillText(subtitle, canvas.width / 2, canvas.height / 2 + 20);
+        }
+
+        function gameLoop() {
+            if (gameState !== 'playing') return; 
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height); 
+
+            pockets.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                ctx.fillStyle = '#111';
+                ctx.fill();
+                ctx.closePath();
+            });
+
+            checkCollisions();
+            
+            balls.forEach(ball => {
+                ball.update();
+                ball.draw();
+            });
+
+            checkPockets();
+
+            let targetBalls = balls.filter(b => b.type === 'target');
+            if (targetBalls.length === 0 && balls.length > 0) {
+                gameState = 'win';
+                drawEndScreen("🏆 KAZANDINIZ!", "Yeniden Oynamak İçin Ekrana Dokun", "#2ecc71");
+                return;
+            } else if (balls.length >= MAX_BALLS) {
+                gameState = 'gameover';
+                drawEndScreen("💀 GAME OVER", "Yeniden Oynamak İçin Ekrana Dokun", "#e74c3c");
+                return;
+            }
+
+            if (isDragging && cueBall) {
+                let dx = dragStart.x - dragCurrent.x;
+                let dy = dragStart.y - dragCurrent.y;
+                let pullDist = Math.hypot(dx, dy);
+
+                if (pullDist > 0.5) {
+                    let dirX = dx / pullDist;
+                    let dirY = dy / pullDist;
+                    let laserLength = 1500; 
+
+                    ctx.beginPath();
+                    ctx.moveTo(cueBall.x, cueBall.y);
+                    ctx.lineTo(cueBall.x + dirX * laserLength, cueBall.y + dirY * laserLength);
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'; 
+                    ctx.lineWidth = 2.5; 
+                    ctx.setLineDash([10, 15]); 
+                    ctx.stroke();
+                    ctx.setLineDash([]); 
+                }
+            }
+
+            let displaySpeed = 0;
+            let hudLabel = "HIZ";
+
+            if (isDragging && cueBall) {
+                let dx = dragStart.x - dragCurrent.x;
+                let dy = dragStart.y - dragCurrent.y;
+                let pullDist = Math.hypot(dx, dy);
+                if (pullDist > 200) pullDist = 200; 
+                displaySpeed = pullDist * 0.15; 
+                hudLabel = "GÜÇ";
+            } else if (cueBall) {
+                displaySpeed = Math.hypot(cueBall.vx, cueBall.vy); 
+            }
+
+            if(!Number.isFinite(displaySpeed)) displaySpeed = 0;
+
+            let maxSpeedScale = 30; 
+            let speedPercent = Math.min(displaySpeed / maxSpeedScale, 1);
+
+            let barR = Math.floor(255 * speedPercent);
+            let barG = Math.floor(255 * (1 - speedPercent));
+            
+            hudFillEl.style.width = `${speedPercent * 100}%`;
+            hudFillEl.style.backgroundColor = `rgb(${barR}, ${barG}, 40)`;
+            hudTextEl.innerText = `${hudLabel} : ${displaySpeed.toFixed(1)}`;
+
+            ballCountEl.innerText = balls.length;
+            ballCountEl.style.color = (balls.length > 80) ? "#e74c3c" : "white";
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function getPointerPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const rectWidth = rect.width > 0 ? rect.width : 400;
+            const rectHeight = rect.height > 0 ? rect.height : 800;
+            
+            let scaleX = canvas.width / rectWidth;
+            let scaleY = canvas.height / rectHeight;
+            
+            let clientX = 0;
+            let clientY = 0;
+
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else if (e.changedTouches && e.changedTouches.length > 0) {
+                clientX = e.changedTouches[0].clientX;
+                clientY = e.changedTouches[0].clientY;
+            } else {
+                clientX = e.clientX || 0;
+                clientY = e.clientY || 0;
+            }
+
+            return {
+                x: (clientX - rect.left) * scaleX,
+                y: (clientY - rect.top) * scaleY
+            };
+        }
+
+        function handleStart(e) {
+            if (gameState !== 'playing') {
+                initGame(); 
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+            
+            const pos = getPointerPos(e);
+            let distToCue = Math.hypot(pos.x - cueBall.x, pos.y - cueBall.y);
+            let isCueMoving = Math.hypot(cueBall.vx, cueBall.vy) > 0.1;
+
+            if (distToCue < cueBall.radius * 6 && !isCueMoving) {
+                isDragging = true;
+                dragStart = {x: pos.x, y: pos.y};
+                dragCurrent = {x: pos.x, y: pos.y};
+            }
+        }
+
+        function handleMove(e) {
+            if (!isDragging || gameState !== 'playing') return;
+            const pos = getPointerPos(e);
+            dragCurrent = { x: pos.x, y: pos.y };
+        }
+
+        function handleEnd(e) {
+            if (!isDragging || gameState !== 'playing') return;
+            isDragging = false;
+
+            let dx = dragStart.x - dragCurrent.x;
+            let dy = dragStart.y - dragCurrent.y;
+            
+            let pullDist = Math.hypot(dx, dy);
+            
+            if (pullDist > 200) {
+                dx = (dx / pullDist) * 200;
+                dy = (dy / pullDist) * 200;
+            }
+
+            if(Number.isFinite(dx) && Number.isFinite(dy)){
+                cueBall.vx = dx * 0.15; 
+                cueBall.vy = dy * 0.15;
+            }
+        }
+
+        canvas.addEventListener('mousedown', handleStart);
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('mouseup', handleEnd);
+
+        canvas.addEventListener('touchstart', (e) => { 
+            e.preventDefault(); 
+            handleStart(e); 
+        }, { passive: false });
+        
+        window.addEventListener('touchmove', (e) => { 
+            if(isDragging) e.preventDefault(); 
+            handleMove(e); 
+        }, { passive: false });
+        
+        window.addEventListener('touchend', (e) => { 
+            e.preventDefault();
+            handleEnd(e); 
+        }, { passive: false });
+
+        // --- MOBİL İÇİN KESİN ÇÖZÜM: window.onload YERİNE ANINDA ÇALIŞTIR ---
+        // Kod okunur okunmaz oyunu ve motoru başlatır. Bekleme yapmaz!
+        initGame();
+        requestAnimationFrame(gameLoop);
+
+    </script>
+</body>
+</html>
