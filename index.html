@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Bilardo Kaosu (Ses Efektli!)</title>
+    <title>Dikey Bilardo Kaosu (Chrome Ses Düzeltmeli)</title>
     <style>
         body {
             margin: 0;
@@ -109,7 +109,7 @@
 <body>
 
     <div id="gameWrapper">
-        <h2>Bilardo Kaosu 🔊</h2>
+        <h2>Dikey Bilardo Kaosu 🔊</h2>
         
         <div id="canvasContainer">
             <canvas id="gameCanvas" width="400" height="800"></canvas>
@@ -138,17 +138,27 @@
         const MIN_SPEED_TO_SPLIT = 1.0; 
         const MAX_SPEED = 30; 
 
-        // --- SES MOTORU (Web Audio API) ---
+        // --- GÜÇLENDİRİLMİŞ CHROME SES MOTORU ---
         const AudioContext = window.AudioContext || window.webkitAudioContext;
-        const audioCtx = new AudioContext();
-        let lastSoundTime = 0; // Ses kaosu önleyici (Throttle)
-        let gameEnded = false; // Bitiş seslerinin defalarca çalmasını önler
+        let audioCtx = null;
+        let lastSoundTime = 0; 
+        let gameEnded = false; 
+
+        // Chrome kilidini kırmak için global uyandırıcı fonksiyon
+        function initAudioEngine() {
+            if (!audioCtx) {
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
 
         function playSound(type) {
-            // Tarayıcılar dokunmadan ses çalmaya izin vermez. Dokunulduysa motoru uyandır.
-            if (audioCtx.state === 'suspended') audioCtx.resume();
+            // Eğer motor henüz kurulmadıysa veya uykudaysa tetikle
+            initAudioEngine();
+            if (!audioCtx || audioCtx.state === 'suspended') return;
             
-            // Çok fazla top çarpıştığında kulak tırmalamasın diye hız sınırı koyuyoruz
             let nowTime = Date.now();
             if ((type === 'collide' || type === 'wall') && nowTime - lastSoundTime < 30) return;
             if (type === 'collide' || type === 'wall') lastSoundTime = nowTime;
@@ -171,14 +181,14 @@
             } else if (type === 'wall') {
                 osc.type = 'square';
                 osc.frequency.setValueAtTime(200, now);
-                gainNode.gain.setValueAtTime(0.05, now);
+                gainNode.gain.setValueAtTime(0.04, now);
                 gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
                 osc.start(now);
                 osc.stop(now + 0.05);
             } else if (type === 'collide') {
                 osc.type = 'sine';
                 osc.frequency.setValueAtTime(600, now);
-                gainNode.gain.setValueAtTime(0.05, now);
+                gainNode.gain.setValueAtTime(0.04, now);
                 gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
                 osc.start(now);
                 osc.stop(now + 0.05);
@@ -209,6 +219,10 @@
                 osc.stop(now + 0.5);
             }
         }
+
+        // CHROME İÇİN KESİN ÇÖZÜM: Kullanıcının ekrana yaptığı İLK dokunuşta kilidi kır
+        window.addEventListener('touchstart', initAudioEngine, { once: true });
+        window.addEventListener('mousedown', initAudioEngine, { once: true });
         // ------------------------------------
 
         let balls = [];
@@ -288,7 +302,7 @@
                 if (this.x - this.radius <= 0) {
                     this.x = this.radius; this.vx *= -1; hitWall = true;
                 } else if (this.x + this.radius >= canvas.width) {
-                    this.x = canvas.width - this.radius; this.vx *= -1; hitWall = true;
+                    this.width; this.x = canvas.width - this.radius; this.vx *= -1; hitWall = true;
                 }
                 
                 if (this.y - this.radius <= 0) {
@@ -297,7 +311,6 @@
                     this.y = canvas.height - this.radius; this.vy *= -1; hitWall = true;
                 }
 
-                // SES ÇALDIRMA (Duvar)
                 if (hitWall) playSound('wall');
 
                 if (hitWall && this.type === 'target' && currentSpeed > MIN_SPEED_TO_SPLIT && this.multiplyCooldown === 0 && balls.length < MAX_BALLS) {
@@ -351,7 +364,6 @@
                     }
 
                     if (dist < b1.radius + b2.radius) {
-                        // SES ÇALDIRMA (Çarpışma)
                         playSound('collide');
 
                         let overlap = (b1.radius + b2.radius - dist) / 2;
@@ -381,7 +393,6 @@
                 for (let pocket of pockets) {
                     let dist = Math.hypot(ball.x - pocket.x, ball.y - pocket.y);
                     if (dist < pocket.r) {
-                        // SES ÇALDIRMA (Delik)
                         playSound('pocket');
 
                         if (ball.type === 'cue') {
@@ -527,8 +538,7 @@
         }
 
         function handleStart(e) {
-            // Sesi başlatmak için ilk dokunuşta tarayıcı kilidini açar
-            if (audioCtx.state === 'suspended') audioCtx.resume();
+            initAudioEngine(); // Güvenlik önlemi
 
             if (gameState !== 'playing') {
                 initGame(); 
@@ -571,7 +581,6 @@
                 cueBall.vx = dx * 0.15; 
                 cueBall.vy = dy * 0.15;
                 
-                // SES ÇALDIRMA (Atış)
                 if (pullDist > 10) playSound('shoot');
             }
         }
