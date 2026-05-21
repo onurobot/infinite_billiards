@@ -65,24 +65,37 @@
         
         .stats-row { display: flex; justify-content: space-around; font-weight: bold; }
 
-        /* ROGUELITE KART EKRANI */
+        /* ROGUELITE KART EKRANI - DÜZELTİLDİ */
         #upgradeOverlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0, 0, 0, 0.85);
             display: none; flex-direction: column; align-items: center; justify-content: center;
-            z-index: 100; border-radius: 12px; backdrop-filter: blur(5px);
+            z-index: 9999; /* Z-Index en üste alındı */
+            border-radius: 12px; backdrop-filter: blur(5px);
+            pointer-events: auto; /* Tıklamaları zorla kabul et */
         }
         #upgradeOverlay h3 { color: #f1c40f; margin-bottom: 20px; font-size: 22px; text-align: center; text-shadow: 0 0 10px rgba(241,196,15,0.5); }
         
+        #cardsContainer {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
         .card {
             background: #34495e; width: 85%; padding: 15px; border-radius: 10px;
-            margin-bottom: 10px; border: 2px solid #95a5a6;
+            border: 2px solid #95a5a6;
             cursor: pointer; transition: transform 0.1s, border-color 0.1s;
+            /* Mobil tıklama sorununu çözmek için eklendi */
+            pointer-events: auto; 
+            -webkit-tap-highlight-color: transparent;
         }
         .card:active { transform: scale(0.95); }
-        .card-title { font-size: 16px; font-weight: bold; color: #fff; margin-bottom: 5px; border-bottom: 1px solid #7f8c8d; padding-bottom: 3px; }
-        .card-pro { color: #2ecc71; font-size: 12px; margin-bottom: 3px; }
-        .card-con { color: #e74c3c; font-size: 12px; }
+        .card-title { font-size: 16px; font-weight: bold; color: #fff; margin-bottom: 5px; border-bottom: 1px solid #7f8c8d; padding-bottom: 3px; pointer-events: none; }
+        .card-pro { color: #2ecc71; font-size: 12px; margin-bottom: 3px; pointer-events: none; }
+        .card-con { color: #e74c3c; font-size: 12px; pointer-events: none; }
 
     </style>
 </head>
@@ -183,12 +196,10 @@
         window.addEventListener('touchstart', initAudioEngine, { once: true });
         window.addEventListener('mousedown', initAudioEngine, { once: true });
 
-        // --- Oyun Değişkenleri ---
         let balls = [];
         let particles = []; 
         let comboTexts = []; 
         
-        // YENİ: Delikler %15 Büyütüldü (35 -> 40, 25 -> 29)
         let pockets = [
             {x: 0, y: 0, r: 40}, {x: 400, y: 0, r: 40},       
             {x: 0, y: 400, r: 29}, {x: 400, y: 400, r: 29},   
@@ -368,12 +379,16 @@
                 balls.push(new Ball(tx, ty, 15, '#ff1111', 'target', ballIdCounter++));
             }
             ballCountEl.innerText = balls.length;
+            canvas.style.pointerEvents = 'auto'; // Oyunu aktifleştir
         }
 
         function showUpgrades() {
             gameState = 'upgrading';
             upgradeOverlay.style.display = 'flex';
             cardsContainer.innerHTML = '';
+            
+            // Oyun tahtasının tıklamalarını engelle
+            canvas.style.pointerEvents = 'none';
             
             let available = ALL_PERKS.filter(p => !activePerks.find(ap => ap.id === p.id));
             available.sort(() => Math.random() - 0.5);
@@ -393,7 +408,14 @@
                     <div class="card-pro">${perk.pro}</div>
                     <div class="card-con">${perk.con}</div>
                 `;
-                card.onclick = () => applyUpgrade(perk);
+                
+                // Güçlü tıklama dinleyicisi (Mobil ve Desktop)
+                card.addEventListener('mousedown', () => applyUpgrade(perk));
+                card.addEventListener('touchstart', (e) => {
+                    e.preventDefault(); 
+                    applyUpgrade(perk);
+                });
+                
                 cardsContainer.appendChild(card);
             });
         }
@@ -606,7 +628,6 @@
                         ctx.lineWidth = 2;
                         ctx.stroke();
 
-                        // YENİ: Kırmızı topun yön tahmini ekranın sonuna kadar uzatıldı
                         ctx.beginPath();
                         ctx.moveTo(hitBall.x, hitBall.y);
                         ctx.lineTo(hitBall.x + outDx * 3000, hitBall.y + outDy * 3000);
