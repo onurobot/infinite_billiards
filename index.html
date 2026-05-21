@@ -269,14 +269,12 @@
                 
                 if (this.type === 'cue' && activePerks.some(p => p.id === 'ghost')) ctx.restore();
 
-                // DÜZELTME: Yansıma çizerken beginPath unutulduğu için rakamlar bozuluyordu
                 ctx.beginPath();
                 ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
                 ctx.arc(this.x - 3, this.y - 3, this.radius / 3, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.closePath();
 
-                // DÜZELTME: Rakamları geri getiren kod
                 if (this.type === 'target') {
                     ctx.fillStyle = 'white';
                     ctx.font = 'bold 13px Arial';
@@ -333,7 +331,6 @@
 
             multiply() {
                 this.multiplyCooldown = 15; ballIdCounter++; 
-                // YENİ: Toplar artık pastel e74c3c değil, capcanlı saf kırmızı ff1111
                 let newBall = new Ball(this.x, this.y, this.radius, '#ff1111', 'target', ballIdCounter);
                 this.vx *= 0.8; this.vy *= 0.8;
                 newBall.vx = this.vx + (Math.random() * 6 - 3); newBall.vy = this.vy + (Math.random() * 6 - 3);
@@ -367,7 +364,6 @@
             for(let i=0; i<targetCount; i++) {
                 let tx = 100 + Math.random() * 200;
                 let ty = 100 + Math.random() * 200;
-                // YENİ: Başlangıç topları da canlı kırmızı
                 balls.push(new Ball(tx, ty, 15, '#ff1111', 'target', ballIdCounter++));
             }
             ballCountEl.innerText = balls.length;
@@ -543,7 +539,7 @@
                 window.addEventListener('touchstart', () => { if(gameState==='gameover') startNewRun(); }, {once:true});
             }
 
-            // --- YENİ: LAZER ÜZERİNDE DİNAMİK GÜÇ BARI ---
+            // --- YENİ: ÇARPIŞMA TAHMİN VE DİNAMİK GÜÇ BARI SİSTEMİ ---
             if (isDragging && cueBall) {
                 let dx = dragStart.x - dragCurrent.x; 
                 let dy = dragStart.y - dragCurrent.y;
@@ -558,26 +554,93 @@
                         dirX = Math.cos(angle); dirY = Math.sin(angle);
                     }
 
-                    // 1. İnce Kesik Çizgili Sonsuz Lazer (Nişangah)
-                    ctx.beginPath(); 
-                    ctx.moveTo(cueBall.x, cueBall.y);
-                    ctx.lineTo(cueBall.x + dirX * 1500, cueBall.y + dirY * 1500);
-                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)'; 
-                    ctx.lineWidth = 2; 
-                    ctx.setLineDash([10, 15]); 
-                    ctx.stroke(); 
-                    ctx.setLineDash([]); 
+                    // Işın İzleme (Raycast) Hesaplaması
+                    let min_t = Infinity;
+                    let hitBall = null;
 
-                    // 2. Lazerin Üzerine Binen Dinamik Renkli Güç Barı
+                    balls.forEach(b => {
+                        if (b.type !== 'target') return;
+                        let vX = cueBall.x - b.x;
+                        let vY = cueBall.y - b.y;
+                        
+                        let b_dot = 2 * (vX * dirX + vY * dirY);
+                        let c_val = (vX * vX + vY * vY) - Math.pow(cueBall.radius + b.radius, 2);
+                        let delta = b_dot * b_dot - 4 * c_val;
+
+                        if (delta >= 0) {
+                            let t = (-b_dot - Math.sqrt(delta)) / 2;
+                            if (t > 0 && t < min_t) {
+                                min_t = t;
+                                hitBall = b;
+                            }
+                        }
+                    });
+
+                    let isGhostPerk = activePerks.some(p => p.id === 'ghost');
+
+                    if (hitBall && min_t < 1500) {
+                        let impactX = cueBall.x + dirX * min_t;
+                        let impactY = cueBall.y + dirY * min_t;
+
+                        // Hedef topun sapma yönü
+                        let outDx, outDy;
+                        if (isGhostPerk) {
+                            outDx = dirX; outDy = dirY;
+                        } else {
+                            outDx = hitBall.x - impactX;
+                            outDy = hitBall.y - impactY;
+                            let outDist = Math.hypot(outDx, outDy);
+                            outDx /= outDist; outDy /= outDist;
+                        }
+
+                        // 1. Ana Nişangah (Sadece çarpışma noktasına kadar)
+                        ctx.beginPath();
+                        ctx.moveTo(cueBall.x, cueBall.y);
+                        ctx.lineTo(impactX, impactY);
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+                        ctx.lineWidth = 2;
+                        ctx.setLineDash([5, 5]);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+
+                        // 2. Çarpışma anındaki Hayalet Beyaz Top
+                        ctx.beginPath();
+                        ctx.arc(impactX, impactY, cueBall.radius, 0, Math.PI * 2);
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+
+                        // 3. Vurulan kırmızı topun fırlayacağı Yön Çizgisi
+                        ctx.beginPath();
+                        ctx.moveTo(hitBall.x, hitBall.y);
+                        ctx.lineTo(hitBall.x + outDx * 150, hitBall.y + outDy * 150);
+                        ctx.strokeStyle = 'rgba(255, 17, 17, 0.8)';
+                        ctx.lineWidth = 3;
+                        ctx.setLineDash([8, 8]);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+
+                    } else {
+                        // Vuracak top yoksa sonsuz uzayan lazer
+                        ctx.beginPath(); 
+                        ctx.moveTo(cueBall.x, cueBall.y);
+                        ctx.lineTo(cueBall.x + dirX * 1500, cueBall.y + dirY * 1500);
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)'; 
+                        ctx.lineWidth = 2; 
+                        ctx.setLineDash([10, 15]); 
+                        ctx.stroke(); 
+                        ctx.setLineDash([]); 
+                    }
+
+                    // --- LAZERİN ÜZERİNE BİNEN GÜÇ BARI ---
                     let clampedPull = Math.min(pullDist, 200);
                     let speedPercent = clampedPull / 200;
-                    let powerLength = speedPercent * 100; // Ekranda en fazla 100px uzar
+                    let powerLength = speedPercent * 100; 
                     
                     let barR = Math.floor(255 * speedPercent); 
                     let barG = Math.floor(255 * (1 - speedPercent));
 
                     ctx.beginPath();
-                    // Topun biraz dışından başlar ki topun içini boyamasın
                     ctx.moveTo(cueBall.x + dirX * 18, cueBall.y + dirY * 18);
                     ctx.lineTo(cueBall.x + dirX * (18 + powerLength), cueBall.y + dirY * (18 + powerLength));
                     ctx.strokeStyle = `rgb(${barR}, ${barG}, 40)`;
@@ -585,23 +648,20 @@
                     ctx.lineCap = 'round';
                     ctx.stroke();
 
-                    // 3. Güç Yüzdesi Yazısı (Barın hemen yanına yapışık)
+                    // Güç Yüzdesi Yazısı
                     ctx.fillStyle = `rgb(${barR}, ${barG}, 40)`;
                     ctx.font = 'bold 12px Arial';
                     ctx.textAlign = 'left';
                     ctx.textBaseline = 'middle';
-                    // Yazıyı lazer çizgisinin hafif sağına/soluna kaydırmak için dik açı hesabı
-                    let perpX = -dirY; 
-                    let perpY = dirX;
+                    let perpX = -dirY; let perpY = dirX;
                     
-                    // Gölgeli yazı (okunabilirliği artırır)
                     ctx.shadowColor = 'black';
                     ctx.shadowBlur = 3;
                     ctx.fillText(`%${Math.floor(speedPercent * 100)}`, 
                         cueBall.x + dirX * (25 + powerLength) + perpX * 12, 
                         cueBall.y + dirY * (25 + powerLength) + perpY * 12
                     );
-                    ctx.shadowBlur = 0; // Gölgeyi diğer çizimler için sıfırla
+                    ctx.shadowBlur = 0; 
                 }
             }
 
