@@ -255,3 +255,420 @@
             draw() {
                 if (!Number.isFinite(this.x) || !Number.isFinite(this.y)) {
                     this.x = 200; this.y = 400; this.vx = 0; this.vy = 0;
+                }
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.closePath();
+
+                ctx.beginPath();
+                ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+                ctx.arc(this.x - 3, this.y - 3, this.radius / 3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.closePath();
+
+                if (this.type === 'target') {
+                    ctx.fillStyle = 'white';
+                    ctx.font = 'bold 13px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(this.number, this.x, this.y + 1);
+                }
+            }
+
+            update() {
+                if (this.multiplyCooldown > 0) this.multiplyCooldown--;
+
+                let currentSpeed = Math.hypot(this.vx, this.vy);
+                if (currentSpeed > MAX_SPEED) {
+                    let ratio = MAX_SPEED / currentSpeed;
+                    this.vx *= ratio; this.vy *= ratio;
+                }
+
+                this.x += this.vx; this.y += this.vy;
+
+                let currentFriction = activePerks.some(p => p.id === 'ice') ? 0.994 : FRICTION;
+                this.vx *= currentFriction;
+                this.vy *= currentFriction;
+
+                if (Math.abs(this.vx) < 0.05) this.vx = 0;
+                if (Math.abs(this.vy) < 0.05) this.vy = 0;
+
+                let hitWall = false;
+                
+                if (this.x - this.radius <= 0) { this.x = this.radius; this.vx *= -1; hitWall = true; } 
+                else if (this.x + this.radius >= canvas.width) { this.x = canvas.width - this.radius; this.vx *= -1; hitWall = true; }
+                
+                if (this.y - this.radius <= 0) { this.y = this.radius; this.vy *= -1; hitWall = true; } 
+                else if (this.y + this.radius >= canvas.height) { this.y = canvas.height - this.radius; this.vy *= -1; hitWall = true; }
+
+                if (hitWall) playSound('wall');
+
+                let splitThreshold = activePerks.some(p => p.id === 'shield') ? 6.5 : MIN_SPEED_TO_SPLIT;
+
+                if (hitWall && this.type === 'target' && currentSpeed > splitThreshold && this.multiplyCooldown === 0 && balls.length < MAX_BALLS) {
+                    this.multiply();
+                }
+            }
+
+            multiply() {
+                this.multiplyCooldown = 15; ballIdCounter++; 
+                let newBall = new Ball(this.x, this.y, this.radius, '#ff1111', 'target', ballIdCounter);
+                this.vx *= 0.8; this.vy *= 0.8;
+                newBall.vx = this.vx + (Math.random() * 6 - 3); newBall.vy = this.vy + (Math.random() * 6 - 3);
+                newBall.multiplyCooldown = 15; 
+                balls.push(newBall);
+            }
+        }
+
+        function triggerExplosion(x, y, color = null) {
+            for (let i = 0; i < 20; i++) particles.push(new Particle(x, y, color));
+        }
+
+        function startNewRun() {
+            activePerks = [];
+            currentLevel = 1;
+            totalShots = 0;
+            updateHUDText();
+            startLevel();
+        }
+
+        function startLevel() {
+            gameState = 'playing';
+            gameEnded = false;
+            balls = []; particles = []; comboTexts = [];
+            ballIdCounter = 1; currentCombo = 0;
+            
+            cueBall = new Ball(200, 600, 15, '#ecf0f1', 'cue'); 
+            balls.push(cueBall);
+
+            let targetCount = Math.min(1 + Math.floor(currentLevel / 2), 5);
+            for(let i=0; i<targetCount; i++) {
+                let tx = 100 + Math.random() * 200;
+                let ty = 100 + Math.random() * 200;
+                balls.push(new Ball(tx, ty, 15, '#ff1111', 'target', ballIdCounter++));
+            }
+            ballCountEl.innerText = balls.length;
+            canvas.style.pointerEvents = 'auto'; 
+        }
+
+        function showUpgrades() {
+            gameState = 'upgrading';
+            upgradeOverlay.style.display = 'flex';
+            cardsContainer.innerHTML = '';
+            canvas.style.pointerEvents = 'none';
+            
+            let available = ALL_PERKS.filter(p => !activePerks.find(ap => ap.id === p.id));
+            available.sort(() => Math.random() - 0.5);
+            let choices = available.slice(0, 3); 
+
+            if(choices.length === 0) {
+                applyUpgrade(null);
+                return;
+            }
+
+            choices.forEach(perk => {
+                let card = document.createElement('div');
+                card.className = 'card';
+                card.style.borderColor = perk.color;
+                card.innerHTML = `
+                    <div class="card-title" style="color:${perk.color}">${perk.title}</div>
+                    <div class="card-pro">${perk.pro}</div>
+                    <div class="card-con">${perk.con}</div>
+                `;
+                
+                card.addEventListener('mousedown', () => applyUpgrade(perk));
+                card.addEventListener('touchstart', (e) => {
+                    e.preventDefault(); 
+                    applyUpgrade(perk);
+                });
+                cardsContainer.appendChild(card);
+            });
+        }
+
+        function applyUpgrade(perk) {
+            playSound('powerup');
+            if(perk) activePerks.push(perk);
+            upgradeOverlay.style.display = 'none';
+            currentLevel++;
+            updateHUDText();
+            startLevel();
+        }
+
+        function updateHUDText() {
+            shotCountEl.innerText = totalShots;
+            levelDisplayEl.innerText = currentLevel;
+            perksDisplayEl.innerText = activePerks.length > 0 ? activePerks.map(p => p.title.split(' ')[1]).join(', ') : 'Yok';
+        }
+
+        function checkCollisions() {
+            for (let i = 0; i < balls.length; i++) {
+                for (let j = i + 1; j < balls.length; j++) {
+                    let b1 = balls[i]; let b2 = balls[j];
+                    let dx = b2.x - b1.x; let dy = b2.y - b1.y;
+                    let dist = Math.hypot(dx, dy);
+
+                    if (dist < 0.1) { dx = 0.1; dy = 0.1; dist = 0.14; }
+
+                    if (dist < b1.radius + b2.radius) {
+                        playSound('collide', 1 + (Math.random() * 0.2 - 0.1));
+
+                        let isCueTargetHit = (b1.type === 'cue' && b2.type === 'target') || (b2.type === 'cue' && b1.type === 'target');
+                        if (isCueTargetHit && activePerks.some(p => p.id === 'explode') && cueBall.canExplode) {
+                            cueBall.canExplode = false; 
+                            let impactX = (b1.x + b2.x) / 2;
+                            let impactY = (b1.y + b2.y) / 2;
+                            triggerExplosion(impactX, impactY, '#ff3300');
+                            playSound('powerup'); 
+                            
+                            balls.forEach(b => {
+                                if (b.type === 'target') {
+                                    let pDist = Math.hypot(b.x - impactX, b.y - impactY);
+                                    if (pDist < 160 && pDist > 0) {
+                                        let force = (160 - pDist) * 0.09;
+                                        b.vx += ((b.x - impactX) / pDist) * force;
+                                        b.vy += ((b.y - impactY) / pDist) * force;
+                                    }
+                                }
+                            });
+                        }
+
+                        let overlap = (b1.radius + b2.radius - dist) / 2;
+                        let nx = dx / dist; let ny = dy / dist;
+                        b1.x -= nx * overlap; b1.y -= ny * overlap;
+                        b2.x += nx * overlap; b2.y += ny * overlap;
+
+                        let kx = b1.vx - b2.vx; let ky = b1.vy - b2.vy;
+                        let p = 2 * (nx * kx + ny * ky) / (b1.mass + b2.mass);
+
+                        b1.vx -= p * b2.mass * nx; b1.vy -= p * b2.mass * ny;
+                        b2.vx += p * b1.mass * nx; b2.vy += p * b1.mass * ny;
+                    }
+                }
+            }
+        }
+
+        function checkPockets() {
+            for (let i = balls.length - 1; i >= 0; i--) {
+                let ball = balls[i];
+                for (let pocket of pockets) {
+                    if (Math.hypot(ball.x - pocket.x, ball.y - pocket.y) < pocket.r) {
+                        if (ball.type === 'cue') {
+                            playSound('pocket', 0);
+                            ball.x = 200; ball.y = 600; ball.vx = 0; ball.vy = 0;
+                        } else {
+                            currentCombo++;
+                            playSound('pocket', currentCombo);
+                            triggerExplosion(ball.x, ball.y);
+                            comboTexts.push(new ComboText(ball.x, ball.y, currentCombo));
+                            balls.splice(i, 1);
+                        }
+                        break; 
+                    }
+                }
+            }
+        }
+
+        function drawEndScreen(title, subtitle, color) {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.85)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = color; ctx.font = 'bold 34px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(title, canvas.width / 2, canvas.height / 2 - 30);
+            ctx.fillStyle = 'white'; ctx.font = '15px Arial'; ctx.fillText(subtitle, canvas.width / 2, canvas.height / 2 + 20);
+        }
+
+        // --- YENİ NESİL ZIRHLI MOTOR: ÇİZİM ASLA DURMAZ ---
+        function gameLoop() {
+            requestAnimationFrame(gameLoop); // Bir sonraki kareyi her zaman planla
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height); 
+
+            // GİRDAP DELİKLERİ (Sadece oynanırken hesaplanır ama her zaman çizilir)
+            if (gameState === 'playing' && activePerks.some(p => p.id === 'vortex')) {
+                balls.forEach(b => {
+                    pockets.forEach(p => {
+                        let d = Math.hypot(b.x - p.x, b.y - p.y);
+                        if (d < 75 && d > 0) {
+                            let forceFactor = b.type === 'cue' ? 0.04 : 0.3; 
+                            b.vx += ((p.x - b.x) / d) * forceFactor;
+                            b.vy += ((p.y - b.y) / d) * forceFactor;
+                        }
+                    });
+                });
+            }
+
+            // Sabit Delikleri Çiz
+            pockets.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fillStyle = '#111'; ctx.fill(); ctx.closePath(); });
+
+            // Fizik Kuralları (Sadece oynanırken çalışır)
+            if (gameState === 'playing') {
+                checkCollisions();
+                checkPockets();
+            }
+
+            // Topları Çiz (Her durumda çizilir, böylece asla kaybolmazlar)
+            balls.forEach(ball => { 
+                if (gameState === 'playing') ball.update(); 
+                ball.draw(); 
+            });
+
+            // Partikülleri ve Yazıları Güncelle ve Çiz
+            for (let i = particles.length - 1; i >= 0; i--) { 
+                if (gameState === 'playing') particles[i].update(); 
+                particles[i].draw(); 
+                if (particles[i].alpha <= 0) particles.splice(i, 1); 
+            }
+            for (let i = comboTexts.length - 1; i >= 0; i--) { 
+                if (gameState === 'playing') comboTexts[i].update(); 
+                comboTexts[i].draw(); 
+                if (comboTexts[i].alpha <= 0) comboTexts.splice(i, 1); 
+            }
+
+            if (gameState === 'playing' && balls.every(b => Math.hypot(b.vx, b.vy) < 0.1)) currentCombo = 0;
+
+            // Kazanma / Kaybetme Durum Kontrolü
+            if (gameState === 'playing') {
+                let targetBalls = balls.filter(b => b.type === 'target');
+                if (targetBalls.length === 0 && balls.length > 0) {
+                    gameState = 'level_clear'; // Hemen kilit durumuna geç
+                    if (!gameEnded) { playSound('win'); gameEnded = true; }
+                    setTimeout(showUpgrades, 1000); 
+                } else if (balls.length >= MAX_BALLS) {
+                    gameState = 'gameover';
+                    if (!gameEnded) { playSound('gameover'); gameEnded = true; }
+                }
+            }
+
+            // Ekran Overlayout Çizimleri (Uçuşan pencerelerde canvas'ın üstüne basılır)
+            if (gameState === 'gameover') {
+                drawEndScreen("💀 MASA PATLADI", "Toplam Atış: " + totalShots + " | Ulaşılan Seviye: " + currentLevel, "#e74c3c");
+            } else if (gameState === 'level_clear') {
+                drawEndScreen("🎉 ODA TEMİZLENDİ", "Yeni özellikler yükleniyor...", "#2ecc71");
+            }
+
+            // Nişangah ve Güç Hesaplama Çizimi
+            if (gameState === 'playing' && isDragging && cueBall) {
+                let dx = dragStart.x - dragCurrent.x; 
+                let dy = dragStart.y - dragCurrent.y;
+                let pullDist = Math.hypot(dx, dy);
+
+                if (pullDist > 0.5) {
+                    let dirX = dx / pullDist; 
+                    let dirY = dy / pullDist;
+
+                    let min_t = Infinity;
+                    let hitBall = null;
+
+                    balls.forEach(b => {
+                        if (b.type !== 'target') return;
+                        let vX = cueBall.x - b.x;
+                        let vY = cueBall.y - b.y;
+                        
+                        let b_dot = 2 * (vX * dirX + vY * dirY);
+                        let c_val = (vX * vX + vY * vY) - Math.pow(cueBall.radius + b.radius, 2);
+                        let delta = b_dot * b_dot - 4 * c_val;
+
+                        if (delta >= 0) {
+                            let t = (-b_dot - Math.sqrt(delta)) / 2;
+                            if (t > 0 && t < min_t) { min_t = t; hitBall = b; }
+                        }
+                    });
+
+                    if (hitBall && min_t < 1500) {
+                        let impactX = cueBall.x + dirX * min_t;
+                        let impactY = cueBall.y + dirY * min_t;
+
+                        let outDx = hitBall.x - impactX;
+                        let outDy = hitBall.y - impactY;
+                        let outDist = Math.hypot(outDx, outDy);
+                        outDx /= outDist; outDy /= outDist;
+
+                        ctx.beginPath(); ctx.moveTo(cueBall.x, cueBall.y); ctx.lineTo(impactX, impactY);
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]); ctx.stroke(); ctx.setLineDash([]);
+
+                        ctx.beginPath(); ctx.arc(impactX, impactY, cueBall.radius, 0, Math.PI * 2);
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)'; ctx.lineWidth = 2; ctx.stroke();
+
+                        ctx.beginPath(); ctx.moveTo(hitBall.x, hitBall.y); ctx.lineTo(hitBall.x + outDx * 3000, hitBall.y + outDy * 3000);
+                        ctx.strokeStyle = 'rgba(255, 17, 17, 0.8)'; ctx.lineWidth = 3; ctx.setLineDash([8, 8]); ctx.stroke(); ctx.setLineDash([]);
+                    } else {
+                        ctx.beginPath(); ctx.moveTo(cueBall.x, cueBall.y); ctx.lineTo(cueBall.x + dirX * 1500, cueBall.y + dirY * 1500);
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)'; ctx.lineWidth = 2; ctx.setLineDash([10, 15]); ctx.stroke(); ctx.setLineDash([]); 
+                    }
+
+                    let clampedPull = Math.min(pullDist, 200);
+                    let speedPercent = clampedPull / 200;
+                    let powerLength = speedPercent * 100; 
+                    let barR = Math.floor(255 * speedPercent); let barG = Math.floor(255 * (1 - speedPercent));
+
+                    ctx.beginPath(); ctx.moveTo(cueBall.x + dirX * 18, cueBall.y + dirY * 18); ctx.lineTo(cueBall.x + dirX * (18 + powerLength), cueBall.y + dirY * (18 + powerLength));
+                    ctx.strokeStyle = `rgb(${barR}, ${barG}, 40)`; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.stroke();
+
+                    ctx.fillStyle = `rgb(${barR}, ${barG}, 40)`; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+                    let perpX = -dirY; let perpY = dirX;
+                    ctx.save(); ctx.shadowColor = 'black'; ctx.shadowBlur = 3;
+                    ctx.fillText(`%${Math.floor(speedPercent * 100)}`, cueBall.x + dirX * (25 + powerLength) + perpX * 12, cueBall.y + dirY * (25 + powerLength) + perpY * 12);
+                    ctx.restore();
+                }
+            }
+
+            ballCountEl.innerText = balls.length; 
+            ballCountEl.style.color = (balls.length > 80) ? "#e74c3c" : "white";
+        }
+
+        function getPointerPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            let scaleX = canvas.width / rect.width; let scaleY = canvas.height / rect.height;
+            let clientX = e.touches ? e.touches[0].clientX : e.clientX || 0;
+            let clientY = e.touches ? e.touches[0].clientY : e.clientY || 0;
+            return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+        }
+
+        function handleStart(e) {
+            initAudioEngine(); 
+            
+            // Eğer yandıysak, ekranda neresine dokunursan dokun otomatik sıfırlasın
+            if (gameState === 'gameover') {
+                startNewRun();
+                return;
+            }
+            if (gameState !== 'playing') return;
+            if (Math.hypot(cueBall.vx, cueBall.vy) > 0.1) return;
+
+            const pos = getPointerPos(e);
+            isDragging = true; dragStart = {x: pos.x, y: pos.y}; dragCurrent = {x: pos.x, y: pos.y};
+        }
+
+        function handleMove(e) {
+            if (!isDragging || gameState !== 'playing') return;
+            const pos = getPointerPos(e); dragCurrent = { x: pos.x, y: pos.y };
+        }
+
+        function handleEnd(e) {
+            if (!isDragging || gameState !== 'playing') return;
+            isDragging = false;
+
+            let dx = dragStart.x - dragCurrent.x; let dy = dragStart.y - dragCurrent.y;
+            let pullDist = Math.hypot(dx, dy);
+
+            if (pullDist > 200) { dx = (dx / pullDist) * 200; dy = (dy / pullDist) * 200; }
+
+            if(Number.isFinite(dx) && Number.isFinite(dy) && pullDist > 15){
+                totalShots++; shotCountEl.innerText = totalShots;
+                cueBall.vx = dx * 0.15; cueBall.vy = dy * 0.15;
+                cueBall.canExplode = true; 
+                playSound('shoot');
+            }
+        }
+
+        canvas.addEventListener('mousedown', handleStart); window.addEventListener('mousemove', handleMove); window.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleStart(e); }, { passive: false });
+        window.addEventListener('touchmove', (e) => { if(isDragging) e.preventDefault(); handleMove(e); }, { passive: false });
+        window.addEventListener('touchend', (e) => { e.preventDefault(); handleEnd(e); }, { passive: false });
+
+        startNewRun();
+        requestAnimationFrame(gameLoop); // Motoru çalıştır
+    </script>
+</body>
+</html>
