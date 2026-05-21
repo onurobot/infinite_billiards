@@ -80,7 +80,7 @@
         
         .stats-row { display: flex; justify-content: space-around; font-weight: bold; }
 
-        /* YENİ: ROGUELITE KART EKRANI */
+        /* ROGUELITE KART EKRANI */
         #upgradeOverlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0, 0, 0, 0.85);
@@ -109,7 +109,6 @@
         <div id="canvasContainer">
             <canvas id="gameCanvas" width="400" height="800"></canvas>
             
-            <!-- KART SEÇİM EKRANI -->
             <div id="upgradeOverlay">
                 <h3>Oda Temizlendi!<br><span style="font-size:14px; color:#bdc3c7;">Bir Özellik Seç</span></h3>
                 <div id="cardsContainer"></div>
@@ -126,7 +125,7 @@
                 <div>Seviye: <span id="levelDisplay" style="color: #9b59b6;">1</span></div>
                 <div>Atış: <span id="shotCount" style="color: #f1c40f;">0</span></div>
             </div>
-            <div style="font-size: 11px; color: #bdc3c7;">Top Sayısı: <span id="ballCount">0</span> / 100 | Aktif Özellikler: <span id="perksDisplay">Yok</span></div>
+            <div style="font-size: 11px; color: #bdc3c7;">Top Sayısı: <span id="ballCount">0</span> / 100 | Aktif: <span id="perksDisplay">Yok</span></div>
         </div>
     </div>
 
@@ -147,7 +146,6 @@
         const MIN_SPEED_TO_SPLIT = 1.0; 
         const MAX_SPEED = 30; 
 
-        // --- Roguelite Yetenekleri (Perks) ---
         const ALL_PERKS = [
             { id: 'heavy', title: 'Ağır Kütle', pro: '+ Kırmızıları paramparça edip uzağa fırlatır.', con: '- Sürtünme artar, çok çabuk yavaşlar.', color: '#7f8c8d' },
             { id: 'ghost', title: 'Hayalet Formu', pro: '+ Çarptığı İLK topun içinden hız kaybetmeden geçer.', con: '- Duvara her çarptığında hızının %50\'sini kaybeder.', color: '#9b59b6' },
@@ -158,7 +156,7 @@
         let activePerks = [];
         let currentLevel = 1;
         let totalShots = 0;
-        let trails = []; // Barut izleri
+        let trails = []; 
 
         // --- Ses Motoru ---
         const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -207,7 +205,7 @@
         window.addEventListener('touchstart', initAudioEngine, { once: true });
         window.addEventListener('mousedown', initAudioEngine, { once: true });
 
-        // --- Oyun Sistemi Değişkenleri ---
+        // --- Oyun Değişkenleri ---
         let balls = [];
         let particles = []; 
         let comboTexts = []; 
@@ -227,7 +225,6 @@
         let ballIdCounter = 1; 
         let currentCombo = 0; 
 
-        // --- Efekt Sınıfları ---
         class Particle {
             constructor(x, y) {
                 this.x = x; this.y = y;
@@ -255,40 +252,41 @@
             draw() { ctx.save(); ctx.globalAlpha = this.alpha; ctx.fillStyle = this.color; ctx.font = `bold ${Math.floor(16 * this.scale)}px Arial`; ctx.textAlign = 'center'; ctx.fillText(this.text, this.x, this.y); ctx.restore(); }
         }
 
-        // --- Bilardo Topu Sınıfı ---
         class Ball {
             constructor(x, y, radius, color, type, number = 0) {
-                this.x = x; this.y = y; this.vx = 0; this.vy = 0; this.radius = radius; this.color = color;
+                this.x = Number.isFinite(x) ? x : 200; 
+                this.y = Number.isFinite(y) ? y : 400; 
+                this.vx = 0; this.vy = 0; this.radius = radius; this.color = color;
                 this.type = type; this.number = number; this.multiplyCooldown = 15; 
                 this.frozenTimer = 0; 
-                this.ghostActive = false; // Hayalet formu için
+                this.ghostActive = false; 
                 
-                // Ağır Kütle Özelliği
                 if (type === 'cue' && activePerks.some(p => p.id === 'heavy')) {
-                    this.mass = 3; this.color = '#7f8c8d'; // Gri renk
+                    this.mass = 3; this.color = '#7f8c8d'; 
                 } else {
                     this.mass = 1;
                 }
             }
 
             draw() {
+                if (!Number.isFinite(this.x) || !Number.isFinite(this.y)) {
+                    this.x = 200; this.y = 400; this.vx = 0; this.vy = 0;
+                }
+
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
                 
-                // Dondurulmuş top efekti
                 if (this.frozenTimer > 0 && this.type === 'target') {
-                    ctx.fillStyle = '#3498db'; // Buz mavisi
+                    ctx.fillStyle = '#3498db'; 
                 } else {
                     ctx.fillStyle = this.color;
                 }
 
-                // Hayalet formu efekti
                 if (this.type === 'cue' && activePerks.some(p => p.id === 'ghost')) {
                     ctx.save(); ctx.globalAlpha = 0.6; ctx.shadowColor = '#9b59b6'; ctx.shadowBlur = 10;
                 }
 
                 ctx.fill();
-                
                 if (this.type === 'cue' && activePerks.some(p => p.id === 'ghost')) ctx.restore();
 
                 ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
@@ -301,7 +299,6 @@
                 if (this.multiplyCooldown > 0) this.multiplyCooldown--;
                 if (this.frozenTimer > 0) this.frozenTimer--;
 
-                // Barut İzi Bırakma
                 if (this.type === 'cue' && activePerks.some(p => p.id === 'trail') && Math.hypot(this.vx, this.vy) > 1) {
                     if (Math.random() > 0.6) trails.push({x: this.x, y: this.y, life: 60});
                 }
@@ -314,7 +311,6 @@
 
                 this.x += this.vx; this.y += this.vy;
 
-                // Ağır Kütle Sürtünme Dezavantajı
                 if (this.type === 'cue' && activePerks.some(p => p.id === 'heavy')) {
                     this.vx *= 0.96; this.vy *= 0.96;
                 } else {
@@ -334,13 +330,11 @@
 
                 if (hitWall) {
                     playSound('wall');
-                    // Hayalet Formu Duvar Dezavantajı
                     if (this.type === 'cue' && activePerks.some(p => p.id === 'ghost')) {
                         this.vx *= 0.5; this.vy *= 0.5;
                     }
                 }
 
-                // Dondurulmuşsa Çoğalamaz
                 if (hitWall && this.type === 'target' && currentSpeed > MIN_SPEED_TO_SPLIT && this.multiplyCooldown === 0 && balls.length < MAX_BALLS && this.frozenTimer === 0) {
                     this.multiply();
                 }
@@ -360,7 +354,6 @@
             for (let i = 0; i < 15; i++) particles.push(new Particle(x, y));
         }
 
-        // --- Roguelite Seviye ve Kart Sistemi ---
         function startNewRun() {
             activePerks = [];
             currentLevel = 1;
@@ -378,7 +371,6 @@
             cueBall = new Ball(200, 600, 15, '#ecf0f1', 'cue'); 
             balls.push(cueBall);
 
-            // Seviyeye göre hedef top sayısı artar
             let targetCount = Math.min(1 + Math.floor(currentLevel / 2), 5);
             for(let i=0; i<targetCount; i++) {
                 let tx = 100 + Math.random() * 200;
@@ -393,13 +385,11 @@
             upgradeOverlay.style.display = 'flex';
             cardsContainer.innerHTML = '';
             
-            // Seçilebilecek kartları karıştır
             let available = ALL_PERKS.filter(p => !activePerks.find(ap => ap.id === p.id));
             available.sort(() => Math.random() - 0.5);
-            let choices = available.slice(0, 3); // En fazla 3 kart
+            let choices = available.slice(0, 3); 
 
             if(choices.length === 0) {
-                // Her şey alındıysa direkt geç
                 applyUpgrade(null);
                 return;
             }
@@ -433,7 +423,6 @@
             perksDisplayEl.innerText = activePerks.length > 0 ? activePerks.map(p => p.title).join(', ') : 'Yok';
         }
 
-        // --- Çarpışma ve Fizik ---
         function checkCollisions() {
             for (let i = 0; i < balls.length; i++) {
                 for (let j = i + 1; j < balls.length; j++) {
@@ -446,7 +435,6 @@
                     if (dist < b1.radius + b2.radius) {
                         playSound('collide', 1 + (Math.random() * 0.2 - 0.1));
 
-                        // Hayalet Formu Çarpışması
                         let isGhost = false;
                         if (b1.type === 'cue' && b1.ghostActive && b2.type === 'target') {
                             b2.vx += b1.vx * 1.5; b2.vy += b1.vy * 1.5;
@@ -456,9 +444,8 @@
                             b2.ghostActive = false; isGhost = true;
                         }
 
-                        if (isGhost) continue; // Çarpışmayı atla, içinden geç
+                        if (isGhost) continue; 
 
-                        // Normal Çarpışma
                         let overlap = (b1.radius + b2.radius - dist) / 2;
                         let nx = dx / dist; let ny = dy / dist;
                         b1.x -= nx * overlap; b1.y -= ny * overlap;
@@ -504,17 +491,15 @@
 
         function gameLoop() {
             if (gameState === 'upgrading') { requestAnimationFrame(gameLoop); return; }
-            if (gameState !== 'playing') return; 
+            if (gameState !== 'playing') { requestAnimationFrame(gameLoop); return; }
 
             ctx.clearRect(0, 0, canvas.width, canvas.height); 
 
-            // Mıknatıs Alanı Çizimi
-            let isCueMoving = Math.hypot(cueBall.vx, cueBall.vy) > 0.1;
-            if (!isCueMoving && activePerks.some(p => p.id === 'magnet')) {
+            let isCueMoving = cueBall ? Math.hypot(cueBall.vx, cueBall.vy) > 0.1 : false;
+            if (!isCueMoving && cueBall && activePerks.some(p => p.id === 'magnet')) {
                 ctx.strokeStyle = `rgba(52, 152, 219, ${Math.abs(Math.sin(Date.now()/300)) * 0.5})`;
                 ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cueBall.x, cueBall.y, 90, 0, Math.PI*2); ctx.stroke();
                 
-                // Topları çek
                 balls.forEach(b => {
                     if(b.type === 'target') {
                         let d = Math.hypot(b.x - cueBall.x, b.y - cueBall.y);
@@ -528,7 +513,6 @@
 
             pockets.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fillStyle = '#111'; ctx.fill(); ctx.closePath(); });
 
-            // Barut İzlerini Çiz ve Hesapla
             for (let i = trails.length - 1; i >= 0; i--) {
                 let t = trails[i];
                 ctx.fillStyle = `rgba(230, 126, 34, ${t.life/60})`;
@@ -538,7 +522,7 @@
                 else {
                     balls.forEach(b => {
                         if(b.type === 'target' && Math.hypot(b.x - t.x, b.y - t.y) < b.radius + 6) {
-                            b.frozenTimer = 180; // 3 Saniye donma
+                            b.frozenTimer = 180; 
                         }
                     });
                 }
@@ -553,23 +537,20 @@
 
             if (balls.every(b => Math.hypot(b.vx, b.vy) < 0.1)) currentCombo = 0;
 
-            // Seviye Atlama & Kaybetme
             let targetBalls = balls.filter(b => b.type === 'target');
             if (targetBalls.length === 0 && balls.length > 0) {
                 if (!gameEnded) { playSound('win'); gameEnded = true; }
-                setTimeout(showUpgrades, 1000); // 1 saniye sonra kartlar çıksın
-                return;
+                setTimeout(showUpgrades, 1000); 
             } else if (balls.length >= MAX_BALLS) {
                 gameState = 'gameover';
                 if (!gameEnded) { playSound('gameover'); gameEnded = true; }
                 drawEndScreen("💀 MASA PATLADI", "Toplam Atış: " + totalShots + " | Ulaşılan Seviye: " + currentLevel, "#e74c3c");
-                // Tıklayınca run sıfırlansın
+                
+                // Kaybedince ekrana dokununca yeniden başla
                 window.addEventListener('mousedown', () => { if(gameState==='gameover') startNewRun(); }, {once:true});
                 window.addEventListener('touchstart', () => { if(gameState==='gameover') startNewRun(); }, {once:true});
-                return;
             }
 
-            // Nişangah
             if (isDragging && cueBall) {
                 let dx = dragStart.x - dragCurrent.x; let dy = dragStart.y - dragCurrent.y;
                 let pullDist = Math.hypot(dx, dy);
@@ -577,7 +558,6 @@
                 if (pullDist > 0.5) {
                     let dirX = dx / pullDist; let dirY = dy / pullDist;
                     
-                    // Kararsız Mıknatıs Titreme Efekti
                     if(activePerks.some(p => p.id === 'magnet')) {
                         let angle = Math.atan2(dirY, dirX) + (Math.random()*0.1 - 0.05);
                         dirX = Math.cos(angle); dirY = Math.sin(angle);
@@ -589,7 +569,6 @@
                 }
             }
 
-            // HUD
             let displaySpeed = 0; let hudLabel = "GÜÇ";
             if (isDragging && cueBall) {
                 let dx = dragStart.x - dragCurrent.x; let dy = dragStart.y - dragCurrent.y;
@@ -637,7 +616,6 @@
             let dx = dragStart.x - dragCurrent.x; let dy = dragStart.y - dragCurrent.y;
             let pullDist = Math.hypot(dx, dy);
             
-            // Kararsız Mıknatıs Sapma Dezavantajı
             if(activePerks.some(p => p.id === 'magnet')) {
                 let angle = Math.atan2(dy, dx) + (Math.random()*0.1 - 0.05);
                 dx = Math.cos(angle) * pullDist; dy = Math.sin(angle) * pullDist;
@@ -648,13 +626,11 @@
             if(Number.isFinite(dx) && Number.isFinite(dy) && pullDist > 15){
                 totalShots++; shotCountEl.innerText = totalShots;
                 
-                // Barut İzi Güç Düşürme Dezavantajı
                 let powerMultiplier = activePerks.some(p => p.id === 'trail') ? 0.75 : 1;
                 
                 cueBall.vx = dx * 0.15 * powerMultiplier; 
                 cueBall.vy = dy * 0.15 * powerMultiplier;
                 
-                // Hayalet Formu Aktivasyonu
                 if(activePerks.some(p => p.id === 'ghost')) cueBall.ghostActive = true;
 
                 playSound('shoot');
@@ -666,7 +642,9 @@
         window.addEventListener('touchmove', (e) => { if(isDragging) e.preventDefault(); handleMove(e); }, { passive: false });
         window.addEventListener('touchend', (e) => { e.preventDefault(); handleEnd(e); }, { passive: false });
 
+        // SİSTEMİ ATEŞLE
         startNewRun();
+        requestAnimationFrame(gameLoop);
     </script>
 </body>
 </html>
