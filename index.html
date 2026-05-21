@@ -28,11 +28,11 @@
             align-items: center;
             padding: 5px 10px;
             box-sizing: border-box;
-            gap: 6px; 
+            gap: 10px; 
             position: relative;
         }
         
-        h2 { margin: 0; font-size: 18px; font-weight: bold; letter-spacing: 1px; flex-shrink: 0; color: #f39c12; }
+        h2 { margin: 5px 0 0 0; font-size: 18px; font-weight: bold; letter-spacing: 1px; flex-shrink: 0; color: #f39c12; }
 
         #canvasContainer {
             flex: 1; 
@@ -59,23 +59,8 @@
             user-select: none;
         }
 
-        #hudContainer {
-            width: 100%;
-            height: 25px;
-            background-color: rgba(0, 0, 0, 0.4);
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-radius: 6px;
-            position: relative;
-            overflow: hidden;
-            flex-shrink: 0;
-            box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
-        }
-
-        #hudFill { height: 100%; width: 0%; background-color: rgb(0, 255, 40); transition: width 0.05s linear; }
-        #hudText { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 13px; text-shadow: 1px 1px 2px black; pointer-events: none; }
-
         #info {
-            text-align: center; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 8px; font-size: 13px; width: 100%; box-sizing: border-box; flex-shrink: 0; margin-bottom: 5px; display: flex; flex-direction: column; gap: 4px;
+            text-align: center; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px; font-size: 14px; width: 100%; box-sizing: border-box; flex-shrink: 0; margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px;
         }
         
         .stats-row { display: flex; justify-content: space-around; font-weight: bold; }
@@ -114,18 +99,13 @@
                 <div id="cardsContainer"></div>
             </div>
         </div>
-        
-        <div id="hudContainer">
-            <div id="hudFill"></div>
-            <div id="hudText">HIZ: 0.0</div>
-        </div>
 
         <div id="info">
             <div class="stats-row">
                 <div>Seviye: <span id="levelDisplay" style="color: #9b59b6;">1</span></div>
                 <div>Atış: <span id="shotCount" style="color: #f1c40f;">0</span></div>
             </div>
-            <div style="font-size: 11px; color: #bdc3c7;">Top Sayısı: <span id="ballCount">0</span> / 100 | Aktif: <span id="perksDisplay">Yok</span></div>
+            <div style="font-size: 12px; color: #bdc3c7;">Top Sayısı: <span id="ballCount">0</span> / 100 | Aktif: <span id="perksDisplay">Yok</span></div>
         </div>
     </div>
 
@@ -136,8 +116,6 @@
         const shotCountEl = document.getElementById('shotCount');
         const levelDisplayEl = document.getElementById('levelDisplay');
         const perksDisplayEl = document.getElementById('perksDisplay');
-        const hudFillEl = document.getElementById('hudFill');
-        const hudTextEl = document.getElementById('hudText');
         const upgradeOverlay = document.getElementById('upgradeOverlay');
         const cardsContainer = document.getElementById('cardsContainer');
 
@@ -287,12 +265,25 @@
                 }
 
                 ctx.fill();
+                ctx.closePath();
+                
                 if (this.type === 'cue' && activePerks.some(p => p.id === 'ghost')) ctx.restore();
 
+                // DÜZELTME: Yansıma çizerken beginPath unutulduğu için rakamlar bozuluyordu
+                ctx.beginPath();
                 ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
                 ctx.arc(this.x - 3, this.y - 3, this.radius / 3, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.closePath();
+
+                // DÜZELTME: Rakamları geri getiren kod
+                if (this.type === 'target') {
+                    ctx.fillStyle = 'white';
+                    ctx.font = 'bold 13px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(this.number, this.x, this.y + 1);
+                }
             }
 
             update() {
@@ -342,7 +333,8 @@
 
             multiply() {
                 this.multiplyCooldown = 15; ballIdCounter++; 
-                let newBall = new Ball(this.x, this.y, this.radius, '#e74c3c', 'target', ballIdCounter);
+                // YENİ: Toplar artık pastel e74c3c değil, capcanlı saf kırmızı ff1111
+                let newBall = new Ball(this.x, this.y, this.radius, '#ff1111', 'target', ballIdCounter);
                 this.vx *= 0.8; this.vy *= 0.8;
                 newBall.vx = this.vx + (Math.random() * 6 - 3); newBall.vy = this.vy + (Math.random() * 6 - 3);
                 newBall.multiplyCooldown = 15; 
@@ -375,7 +367,8 @@
             for(let i=0; i<targetCount; i++) {
                 let tx = 100 + Math.random() * 200;
                 let ty = 100 + Math.random() * 200;
-                balls.push(new Ball(tx, ty, 15, '#e74c3c', 'target', ballIdCounter++));
+                // YENİ: Başlangıç topları da canlı kırmızı
+                balls.push(new Ball(tx, ty, 15, '#ff1111', 'target', ballIdCounter++));
             }
             ballCountEl.innerText = balls.length;
         }
@@ -546,43 +539,74 @@
                 if (!gameEnded) { playSound('gameover'); gameEnded = true; }
                 drawEndScreen("💀 MASA PATLADI", "Toplam Atış: " + totalShots + " | Ulaşılan Seviye: " + currentLevel, "#e74c3c");
                 
-                // Kaybedince ekrana dokununca yeniden başla
                 window.addEventListener('mousedown', () => { if(gameState==='gameover') startNewRun(); }, {once:true});
                 window.addEventListener('touchstart', () => { if(gameState==='gameover') startNewRun(); }, {once:true});
             }
 
+            // --- YENİ: LAZER ÜZERİNDE DİNAMİK GÜÇ BARI ---
             if (isDragging && cueBall) {
-                let dx = dragStart.x - dragCurrent.x; let dy = dragStart.y - dragCurrent.y;
+                let dx = dragStart.x - dragCurrent.x; 
+                let dy = dragStart.y - dragCurrent.y;
                 let pullDist = Math.hypot(dx, dy);
 
                 if (pullDist > 0.5) {
-                    let dirX = dx / pullDist; let dirY = dy / pullDist;
+                    let dirX = dx / pullDist; 
+                    let dirY = dy / pullDist;
                     
                     if(activePerks.some(p => p.id === 'magnet')) {
                         let angle = Math.atan2(dirY, dirX) + (Math.random()*0.1 - 0.05);
                         dirX = Math.cos(angle); dirY = Math.sin(angle);
                     }
 
-                    ctx.beginPath(); ctx.moveTo(cueBall.x, cueBall.y);
+                    // 1. İnce Kesik Çizgili Sonsuz Lazer (Nişangah)
+                    ctx.beginPath(); 
+                    ctx.moveTo(cueBall.x, cueBall.y);
                     ctx.lineTo(cueBall.x + dirX * 1500, cueBall.y + dirY * 1500);
-                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'; ctx.lineWidth = 2.5; ctx.setLineDash([10, 15]); ctx.stroke(); ctx.setLineDash([]); 
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)'; 
+                    ctx.lineWidth = 2; 
+                    ctx.setLineDash([10, 15]); 
+                    ctx.stroke(); 
+                    ctx.setLineDash([]); 
+
+                    // 2. Lazerin Üzerine Binen Dinamik Renkli Güç Barı
+                    let clampedPull = Math.min(pullDist, 200);
+                    let speedPercent = clampedPull / 200;
+                    let powerLength = speedPercent * 100; // Ekranda en fazla 100px uzar
+                    
+                    let barR = Math.floor(255 * speedPercent); 
+                    let barG = Math.floor(255 * (1 - speedPercent));
+
+                    ctx.beginPath();
+                    // Topun biraz dışından başlar ki topun içini boyamasın
+                    ctx.moveTo(cueBall.x + dirX * 18, cueBall.y + dirY * 18);
+                    ctx.lineTo(cueBall.x + dirX * (18 + powerLength), cueBall.y + dirY * (18 + powerLength));
+                    ctx.strokeStyle = `rgb(${barR}, ${barG}, 40)`;
+                    ctx.lineWidth = 6;
+                    ctx.lineCap = 'round';
+                    ctx.stroke();
+
+                    // 3. Güç Yüzdesi Yazısı (Barın hemen yanına yapışık)
+                    ctx.fillStyle = `rgb(${barR}, ${barG}, 40)`;
+                    ctx.font = 'bold 12px Arial';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    // Yazıyı lazer çizgisinin hafif sağına/soluna kaydırmak için dik açı hesabı
+                    let perpX = -dirY; 
+                    let perpY = dirX;
+                    
+                    // Gölgeli yazı (okunabilirliği artırır)
+                    ctx.shadowColor = 'black';
+                    ctx.shadowBlur = 3;
+                    ctx.fillText(`%${Math.floor(speedPercent * 100)}`, 
+                        cueBall.x + dirX * (25 + powerLength) + perpX * 12, 
+                        cueBall.y + dirY * (25 + powerLength) + perpY * 12
+                    );
+                    ctx.shadowBlur = 0; // Gölgeyi diğer çizimler için sıfırla
                 }
             }
 
-            let displaySpeed = 0; let hudLabel = "GÜÇ";
-            if (isDragging && cueBall) {
-                let dx = dragStart.x - dragCurrent.x; let dy = dragStart.y - dragCurrent.y;
-                let pullDist = Math.min(Math.hypot(dx, dy), 200); displaySpeed = pullDist * 0.15; 
-            } else if (cueBall) { displaySpeed = Math.hypot(cueBall.vx, cueBall.vy); hudLabel = "HIZ"; }
-
-            let powerMultiplier = activePerks.some(p => p.id === 'trail') ? 0.75 : 1;
-            let maxSpeedScale = 30 * powerMultiplier; 
-            let speedPercent = Math.min(displaySpeed / maxSpeedScale, 1);
-            let barR = Math.floor(255 * speedPercent); let barG = Math.floor(255 * (1 - speedPercent));
-            hudFillEl.style.width = `${speedPercent * 100}%`; hudFillEl.style.backgroundColor = `rgb(${barR}, ${barG}, 40)`;
-            hudTextEl.innerText = `${hudLabel} : ${displaySpeed.toFixed(1)}`;
-
-            ballCountEl.innerText = balls.length; ballCountEl.style.color = (balls.length > 80) ? "#e74c3c" : "white";
+            ballCountEl.innerText = balls.length; 
+            ballCountEl.style.color = (balls.length > 80) ? "#e74c3c" : "white";
 
             requestAnimationFrame(gameLoop);
         }
@@ -642,7 +666,6 @@
         window.addEventListener('touchmove', (e) => { if(isDragging) e.preventDefault(); handleMove(e); }, { passive: false });
         window.addEventListener('touchend', (e) => { e.preventDefault(); handleEnd(e); }, { passive: false });
 
-        // SİSTEMİ ATEŞLE
         startNewRun();
         requestAnimationFrame(gameLoop);
     </script>
