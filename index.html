@@ -188,10 +188,11 @@
         let particles = []; 
         let comboTexts = []; 
         
+        // YENİ: Delikler %15 Büyütüldü (35 -> 40, 25 -> 29)
         let pockets = [
-            {x: 0, y: 0, r: 35}, {x: 400, y: 0, r: 35},       
-            {x: 0, y: 400, r: 25}, {x: 400, y: 400, r: 25},   
-            {x: 0, y: 800, r: 35}, {x: 400, y: 800, r: 35}    
+            {x: 0, y: 0, r: 40}, {x: 400, y: 0, r: 40},       
+            {x: 0, y: 400, r: 29}, {x: 400, y: 400, r: 29},   
+            {x: 0, y: 800, r: 40}, {x: 400, y: 800, r: 40}    
         ];
 
         let isDragging = false;
@@ -539,7 +540,6 @@
                 window.addEventListener('touchstart', () => { if(gameState==='gameover') startNewRun(); }, {once:true});
             }
 
-            // --- YENİ: ÇARPIŞMA TAHMİN VE DİNAMİK GÜÇ BARI SİSTEMİ ---
             if (isDragging && cueBall) {
                 let dx = dragStart.x - dragCurrent.x; 
                 let dy = dragStart.y - dragCurrent.y;
@@ -554,7 +554,6 @@
                         dirX = Math.cos(angle); dirY = Math.sin(angle);
                     }
 
-                    // Işın İzleme (Raycast) Hesaplaması
                     let min_t = Infinity;
                     let hitBall = null;
 
@@ -582,7 +581,6 @@
                         let impactX = cueBall.x + dirX * min_t;
                         let impactY = cueBall.y + dirY * min_t;
 
-                        // Hedef topun sapma yönü
                         let outDx, outDy;
                         if (isGhostPerk) {
                             outDx = dirX; outDy = dirY;
@@ -593,7 +591,6 @@
                             outDx /= outDist; outDy /= outDist;
                         }
 
-                        // 1. Ana Nişangah (Sadece çarpışma noktasına kadar)
                         ctx.beginPath();
                         ctx.moveTo(cueBall.x, cueBall.y);
                         ctx.lineTo(impactX, impactY);
@@ -603,17 +600,16 @@
                         ctx.stroke();
                         ctx.setLineDash([]);
 
-                        // 2. Çarpışma anındaki Hayalet Beyaz Top
                         ctx.beginPath();
                         ctx.arc(impactX, impactY, cueBall.radius, 0, Math.PI * 2);
                         ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
                         ctx.lineWidth = 2;
                         ctx.stroke();
 
-                        // 3. Vurulan kırmızı topun fırlayacağı Yön Çizgisi
+                        // YENİ: Kırmızı topun yön tahmini ekranın sonuna kadar uzatıldı
                         ctx.beginPath();
                         ctx.moveTo(hitBall.x, hitBall.y);
-                        ctx.lineTo(hitBall.x + outDx * 150, hitBall.y + outDy * 150);
+                        ctx.lineTo(hitBall.x + outDx * 3000, hitBall.y + outDy * 3000);
                         ctx.strokeStyle = 'rgba(255, 17, 17, 0.8)';
                         ctx.lineWidth = 3;
                         ctx.setLineDash([8, 8]);
@@ -621,7 +617,6 @@
                         ctx.setLineDash([]);
 
                     } else {
-                        // Vuracak top yoksa sonsuz uzayan lazer
                         ctx.beginPath(); 
                         ctx.moveTo(cueBall.x, cueBall.y);
                         ctx.lineTo(cueBall.x + dirX * 1500, cueBall.y + dirY * 1500);
@@ -632,7 +627,6 @@
                         ctx.setLineDash([]); 
                     }
 
-                    // --- LAZERİN ÜZERİNE BİNEN GÜÇ BARI ---
                     let clampedPull = Math.min(pullDist, 200);
                     let speedPercent = clampedPull / 200;
                     let powerLength = speedPercent * 100; 
@@ -648,7 +642,6 @@
                     ctx.lineCap = 'round';
                     ctx.stroke();
 
-                    // Güç Yüzdesi Yazısı
                     ctx.fillStyle = `rgb(${barR}, ${barG}, 40)`;
                     ctx.font = 'bold 12px Arial';
                     ctx.textAlign = 'left';
