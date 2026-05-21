@@ -64,10 +64,19 @@
         }
         
         .stats-row { display: flex; justify-content: space-around; font-weight: bold; align-items: center; }
-
-        /* Gelişmiş Sayaç ve Tahmin Alanları */
         #timerDisplay { font-size: 16px; font-weight: bold; transition: color 0.3s; }
-        #predictionDisplay { font-weight: bold; font-size: 15px; }
+
+        /* YENİ: SINIR TANIMAYAN YÜZEN TAHMİN YAZISI */
+        #floatingPrediction {
+            position: absolute;
+            pointer-events: none;
+            z-index: 10000;
+            font-weight: bold;
+            font-size: 18px;
+            text-shadow: 1px 1px 3px black, -1px -1px 3px black;
+            display: none;
+            white-space: nowrap;
+        }
 
         /* ROGUELITE KART EKRANI */
         #upgradeOverlay {
@@ -104,6 +113,9 @@
 </head>
 <body>
 
+    <!-- YÜZEN TAHMİN ELEMENTİ -->
+    <div id="floatingPrediction"></div>
+
     <div id="gameWrapper">
         <h2>Bilardo Kaosu: Roguelite</h2>
         
@@ -122,10 +134,7 @@
                 <div>Zaman: <span id="timerDisplay" style="color: #3498db;">60.0s</span></div>
                 <div>Atış: <span id="shotCount" style="color: #f1c40f;">0</span></div>
             </div>
-            <div style="font-size: 13px; color: #bdc3c7; margin-top: 2px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 4px;">
-                Gelecek Tahmini: <span id="predictionDisplay" style="color: #bdc3c7;">Atış Bekleniyor...</span>
-            </div>
-            <div style="font-size: 11px; color: #bdc3c7;">Top: <span id="ballCount">0</span>/100 | Aktif: <span id="perksDisplay" style="font-size:10px;">Yok</span></div>
+            <div style="font-size: 11px; color: #bdc3c7; margin-top: 5px;">Top: <span id="ballCount">0</span>/100 | Aktif: <span id="perksDisplay" style="font-size:10px;">Yok</span></div>
         </div>
     </div>
 
@@ -137,7 +146,7 @@
         const levelDisplayEl = document.getElementById('levelDisplay');
         const perksDisplayEl = document.getElementById('perksDisplay');
         const timerDisplayEl = document.getElementById('timerDisplay');
-        const predictionDisplayEl = document.getElementById('predictionDisplay');
+        const floatingPredictionEl = document.getElementById('floatingPrediction');
         const upgradeOverlay = document.getElementById('upgradeOverlay');
         const cardsContainer = document.getElementById('cardsContainer');
 
@@ -160,9 +169,11 @@
         let totalShots = 0;
         let comboAppliedThisShot = false;
         
-        // Zaman Ayarları
         let levelTimer = 60.0;
         let lastTimestamp = 0;
+
+        // Ekrandaki parmağın gerçek koordinatlarını tutar
+        let screenPointer = { x: 0, y: 0 };
 
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         let audioCtx = null;
@@ -240,7 +251,6 @@
                 this.isMoving = isMoving;
                 if (isMoving) {
                     let angle = Math.random() * Math.PI * 2;
-                    // GÜNCELLEME: Hareketli engellerin hızı yarı yarıya düşürüldü (0.5 ile çarpıldı)
                     let speed = (1.0 + Math.random() * 1.5) * 0.5;
                     this.vx = Math.cos(angle) * speed;
                     this.vy = Math.sin(angle) * speed;
@@ -358,7 +368,6 @@
             let isVortex = activePerks.some(p => p.id === 'vortex');
 
             for (let step = 0; step < 150; step++) {
-                // GÜNCELLEME: Simülasyonda da Beyaz Top girdaptan ETKİLENMEZ
                 if (isVortex) {
                     simBalls.forEach(b => {
                         if (b.type === 'cue') return; 
@@ -371,7 +380,6 @@
                     });
                 }
 
-                // Engel Çarpışmaları
                 for (let i = 0; i < simBalls.length; i++) {
                     let b = simBalls[i];
                     for (let j = 0; j < simObstacles.length; j++) {
@@ -387,7 +395,6 @@
                     }
                 }
 
-                // Top Çarpışmaları
                 for (let i = 0; i < simBalls.length; i++) {
                     for (let j = i + 1; j < simBalls.length; j++) {
                         let b1 = simBalls[i]; let b2 = simBalls[j];
@@ -406,7 +413,6 @@
                     }
                 }
 
-                // Hareketler
                 let currentFriction = isIce ? 0.994 : FRICTION;
                 for (let i = 0; i < simBalls.length; i++) {
                     let b = simBalls[i];
@@ -422,7 +428,6 @@
                     }
                 }
 
-                // Delikler
                 for (let i = simBalls.length - 1; i >= 0; i--) {
                     let b = simBalls[i];
                     for (let p of pockets) {
@@ -457,13 +462,11 @@
             balls = []; particles = []; comboTexts = []; obstacles = [];
             ballIdCounter = 1; currentCombo = 0; comboAppliedThisShot = false;
             
-            // GÜNCELLEME: Her seviye başlangıcında sayaç 60 saniyeye sıfırlanır
             levelTimer = 60.0;
             lastTimestamp = performance.now();
 
             cueBall = new Ball(200, 600, 15, '#ecf0f1', 'cue'); balls.push(cueBall);
 
-            // GÜNCELLEME: Masadaki başlangıç top sayısı seviye numarasına EŞİTTİR (Level 1 = 1 Top, Level 5 = 5 Top)
             let targetCount = currentLevel;
             let targetRadius = activePerks.some(p => p.id === 'mini') ? 10 : 15;
 
@@ -478,12 +481,11 @@
                 let isMoving = currentLevel >= 5 && Math.random() > 0.5; 
                 let ox, oy;
                 
-                // GÜNCELLEME: Sabit engeller doğrusal (yan yana sıralı) ve asla üst üste binmez
                 if (!isMoving) {
-                    ox = 70 + (i * 85); // 85px aralık bırakarak çakışmayı %100 engeller (Doğrusal yerleşim)
-                    oy = 300; // Hepsi aynı yatay çizgide doğar
+                    // Sabit engeller doğrusal ve birbiri üzerine binmeyecek şekilde sıralanır.
+                    ox = 70 + (i * 85); 
+                    oy = 300; 
                 } else {
-                    // Hareketliler için rastgele doğuş ve çakışma koruması
                     let valid; let attempts = 0;
                     do {
                         valid = true; ox = 60 + Math.random() * 280; oy = 180 + Math.random() * 240;
@@ -495,13 +497,12 @@
             }
 
             ballCountEl.innerText = balls.length; canvas.style.pointerEvents = 'auto'; 
-            predictionDisplayEl.innerText = "Atış Bekleniyor...";
-            predictionDisplayEl.style.color = "#bdc3c7";
         }
 
         function showUpgrades() {
             gameState = 'upgrading'; upgradeOverlay.style.display = 'flex'; cardsContainer.innerHTML = '';
             canvas.style.pointerEvents = 'none';
+            floatingPredictionEl.style.display = 'none'; // Arayüzde yazıyı kapat
             
             let available = ALL_PERKS.filter(p => !activePerks.find(ap => ap.id === p.id));
             available.sort(() => Math.random() - 0.5); let choices = available.slice(0, 3); 
@@ -592,7 +593,8 @@
 
                             if (currentCombo > 1 && activePerks.some(p => p.id === 'combo_score') && !comboAppliedThisShot) {
                                 totalShots--; shotCountEl.innerText = totalShots; comboAppliedThisShot = true;
-                                comboTexts.push(new ComboText(ball.x, ball.y + 25, "-1 ATIŞ SİLİNDİ", true)); playSound('powerup');
+                                comboTexts.push(new ComboText(ball.x, ball.y + 25, "-1 ATIŞ SİLİNDİ", true));
+                                playSound('powerup');
                             }
                             balls.splice(i, 1);
                         }
@@ -605,28 +607,25 @@
         function gameLoop() {
             requestAnimationFrame(gameLoop); 
             
-            // --- SAYAÇ (TIMER) HESAPLAMA VE KONTROLÜ ---
             let currentTime = performance.now();
             let dt = (currentTime - lastTimestamp) / 1000;
             lastTimestamp = currentTime;
-            if (dt > 0.1) dt = 0.1; // Tarayıcı sekmeyi arka plana atarsa zamanın zıplamasını engeller
+            if (dt > 0.1) dt = 0.1; 
 
             if (gameState === 'playing') {
                 levelTimer -= dt;
                 
-                // Zaman biterse: Tüm perkler silinir!
                 if (levelTimer <= 0) {
                     activePerks = [];
-                    levelTimer = 60.0; // Sayacı sıfırla
+                    levelTimer = 60.0; 
                     updateHUDText();
                     playSound('gameover');
-                    comboTexts.push(new ComboText(200, 350, "SÜRE BİTTİ: TÜM ÖZELLİKLER SİLİNDİ!"));
+                    comboTexts.push(new ComboText(200, 350, "SÜRE BİTTİ: ÖZELLİKLER SİLİNDİ!"));
                 }
                 
-                // Zaman UI Güncellemesi
                 timerDisplayEl.innerText = Math.max(0, levelTimer).toFixed(1) + "s";
                 if (levelTimer <= 15) {
-                    timerDisplayEl.style.color = '#e74c3c'; // Son 15 saniye kırmızı uyarısı
+                    timerDisplayEl.style.color = '#e74c3c'; 
                 } else {
                     timerDisplayEl.style.color = '#3498db';
                 }
@@ -634,7 +633,6 @@
 
             ctx.clearRect(0, 0, canvas.width, canvas.height); 
 
-            // GÜNCELLEME: Beyaz Top Girdaptan Kesinlikle Etkilenmez (`b.type === 'cue'` engeli kondu)
             if (gameState === 'playing' && activePerks.some(p => p.id === 'vortex')) {
                 balls.forEach(b => {
                     if (b.type === 'cue') return; 
@@ -663,10 +661,14 @@
             if (gameState === 'playing') {
                 let targetBalls = balls.filter(b => b.type === 'target');
                 if (targetBalls.length === 0 && balls.length > 0) {
-                    gameState = 'level_clear'; if (!gameEnded) { playSound('win'); gameEnded = true; }
+                    gameState = 'level_clear'; 
+                    floatingPredictionEl.style.display = 'none'; // Paneli sakla
+                    if (!gameEnded) { playSound('win'); gameEnded = true; }
                     setTimeout(showUpgrades, 1000); 
                 } else if (balls.length >= MAX_BALLS) {
-                    gameState = 'gameover'; if (!gameEnded) { playSound('gameover'); gameEnded = true; }
+                    gameState = 'gameover'; 
+                    floatingPredictionEl.style.display = 'none';
+                    if (!gameEnded) { playSound('gameover'); gameEnded = true; }
                 }
             }
 
@@ -682,7 +684,7 @@
                 ctx.fillStyle = 'white'; ctx.font = '15px Arial'; ctx.fillText("Yeni özellikler yükleniyor...", canvas.width / 2, canvas.height / 2 + 20);
             }
 
-            // GÜNCELLEME: PANELDEKİ GELECEK TAHMİNİ METNİ HER KOŞULDA AKTİFTİR
+            // GÜNCELLEME: SINIR TANIMAYAN YÜZEN TAHMİN YAZISI
             if (gameState === 'playing' && isDragging && cueBall) {
                 let dx = dragStart.x - dragCurrent.x; let dy = dragStart.y - dragCurrent.y; let pullDist = Math.hypot(dx, dy);
 
@@ -690,16 +692,19 @@
                     if (pullDist > 200) { dx = (dx / pullDist) * 200; dy = (dy / pullDist) * 200; }
                     let prediction = predictTrajectory(dx * 0.15, dy * 0.15);
 
-                    // GÜNCELLEME: İmleç masa dışına çıksa da HTML elementinde sonuç hep güncellenir
+                    // Yüzen HTML Elementi Güncellemesi (Parmağın veya mouse'un hafif üst sağ çaprazına)
+                    floatingPredictionEl.style.display = 'block';
+                    floatingPredictionEl.style.left = (screenPointer.x + 20) + 'px';
+                    floatingPredictionEl.style.top = (screenPointer.y - 30) + 'px';
+
                     if (prediction.pocketedTargetCount > 0) {
-                        predictionDisplayEl.innerText = `+${prediction.pocketedTargetCount} TOP GİRECEK! 🔥`;
-                        predictionDisplayEl.style.color = '#2ecc71';
+                        floatingPredictionEl.innerText = `+${prediction.pocketedTargetCount} GİRECEK!`;
+                        floatingPredictionEl.style.color = '#2ecc71';
                     } else {
-                        predictionDisplayEl.innerText = "0 TOP (Açı Değiştir)";
-                        predictionDisplayEl.style.color = '#f1c40f';
+                        floatingPredictionEl.innerText = "0 TOP";
+                        floatingPredictionEl.style.color = 'rgba(255, 255, 255, 0.7)';
                     }
 
-                    // Rota çizgilerini çiz
                     prediction.paths.forEach(pathObj => {
                         if (pathObj.points.length < 2) return;
                         ctx.beginPath(); ctx.moveTo(pathObj.points[0].x, pathObj.points[0].y);
@@ -709,7 +714,6 @@
                         ctx.stroke(); ctx.setLineDash([]);
                     });
 
-                    // Güç Barı Çizimi
                     let dirX = dx / pullDist; let dirY = dy / pullDist;
                     let clampedPull = Math.min(pullDist, 200); let speedPercent = clampedPull / 200; let powerLength = speedPercent * 100; 
                     let barR = Math.floor(255 * speedPercent); let barG = Math.floor(255 * (1 - speedPercent));
@@ -722,19 +726,27 @@
                     ctx.save(); ctx.shadowColor = 'black'; ctx.shadowBlur = 3;
                     ctx.fillText(`%${Math.floor(speedPercent * 100)}`, cueBall.x + dirX * (25 + powerLength) + perpX * 12, cueBall.y + dirY * (25 + powerLength) + perpY * 12);
                     ctx.restore();
+                } else {
+                    floatingPredictionEl.style.display = 'none';
                 }
-            } else if (gameState === 'playing' && !isDragging) {
-                // Sürükleme yoksa paneli varsayılana çek
-                predictionDisplayEl.innerText = "Atış Bekleniyor...";
-                predictionDisplayEl.style.color = "#bdc3c7";
+            } else {
+                floatingPredictionEl.style.display = 'none';
             }
         }
 
+        // Mouse/Parmak kordinatlarını ekran bazında alan zırhlı fonksiyon
         function getPointerPos(e) {
+            let clientX = e.touches && e.touches.length > 0 ? e.touches[0].clientX : e.clientX || 0;
+            let clientY = e.touches && e.touches.length > 0 ? e.touches[0].clientY : e.clientY || 0;
+            
+            // Yüzen HTML DOM objesi için raw screen koordinatları
+            screenPointer.x = clientX;
+            screenPointer.y = clientY;
+
+            // Canvas objeleri için çevrilmiş koordinatlar
             const rect = canvas.getBoundingClientRect();
             let scaleX = canvas.width / rect.width; let scaleY = canvas.height / rect.height;
-            let clientX = e.touches ? e.touches[0].clientX : e.clientX || 0;
-            let clientY = e.touches ? e.touches[0].clientY : e.clientY || 0;
+            
             return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
         }
 
@@ -750,6 +762,7 @@
         }
 
         function handleMove(e) {
+            getPointerPos(e); // Sadece koordinatları güncellemesi için çağırılır
             if (!isDragging || gameState !== 'playing') return;
             const pos = getPointerPos(e); dragCurrent = { x: pos.x, y: pos.y };
         }
@@ -757,8 +770,10 @@
         function handleEnd(e) {
             if (!isDragging || gameState !== 'playing') return;
             isDragging = false;
+            floatingPredictionEl.style.display = 'none';
 
             let dx = dragStart.x - dragCurrent.x; let dy = dragStart.y - dragCurrent.y; let pullDist = Math.hypot(dx, dy);
+
             if (pullDist > 200) { dx = (dx / pullDist) * 200; dy = (dy / pullDist) * 200; }
 
             if(Number.isFinite(dx) && Number.isFinite(dy) && pullDist > 15){
