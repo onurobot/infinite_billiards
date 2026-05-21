@@ -243,20 +243,12 @@
                 if (this.y + this.r > canvas.height) { this.y = canvas.height - this.r; this.vy *= -1; }
             }
             draw() {
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
-                ctx.fillStyle = '#2c3e50'; 
-                ctx.fill();
-                ctx.lineWidth = 4;
-                ctx.strokeStyle = this.isMoving ? '#e67e22' : '#95a5a6';
-                ctx.stroke();
-                ctx.closePath();
-                
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.r * 0.4, 0, Math.PI * 2);
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+                ctx.fillStyle = '#2c3e50'; ctx.fill(); ctx.lineWidth = 4;
+                ctx.strokeStyle = this.isMoving ? '#e67e22' : '#95a5a6'; ctx.stroke(); ctx.closePath();
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.r * 0.4, 0, Math.PI * 2);
                 ctx.fillStyle = this.isMoving ? 'rgba(230, 126, 34, 0.5)' : 'rgba(149, 165, 166, 0.5)';
-                ctx.fill();
-                ctx.closePath();
+                ctx.fill(); ctx.closePath();
             }
         }
 
@@ -299,77 +291,191 @@
                 this.type = type; this.number = number; this.multiplyCooldown = 15; 
                 this.mass = 1; this.canExplode = false; 
             }
-
             draw() {
-                if (!Number.isFinite(this.x) || !Number.isFinite(this.y)) {
-                    this.x = 200; this.y = 400; this.vx = 0; this.vy = 0;
-                }
-
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                ctx.fillStyle = this.color;
-                ctx.fill();
-                ctx.closePath();
-
-                ctx.beginPath();
-                ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
-                ctx.arc(this.x - 3, this.y - 3, this.radius / 3, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.closePath();
-
+                if (!Number.isFinite(this.x) || !Number.isFinite(this.y)) { this.x = 200; this.y = 400; this.vx = 0; this.vy = 0; }
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2); ctx.fillStyle = this.color; ctx.fill(); ctx.closePath();
+                ctx.beginPath(); ctx.fillStyle = "rgba(255, 255, 255, 0.3)"; ctx.arc(this.x - 3, this.y - 3, this.radius / 3, 0, Math.PI * 2); ctx.fill(); ctx.closePath();
                 if (this.type === 'target') {
-                    ctx.fillStyle = 'white';
-                    ctx.font = 'bold 12px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(this.number, this.x, this.y + 1);
+                    ctx.fillStyle = 'white'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(this.number, this.x, this.y + 1);
                 }
             }
-
             update() {
                 if (this.multiplyCooldown > 0) this.multiplyCooldown--;
-
                 let currentSpeed = Math.hypot(this.vx, this.vy);
-                if (currentSpeed > MAX_SPEED) {
-                    let ratio = MAX_SPEED / currentSpeed;
-                    this.vx *= ratio; this.vy *= ratio;
-                }
-
+                if (currentSpeed > MAX_SPEED) { let ratio = MAX_SPEED / currentSpeed; this.vx *= ratio; this.vy *= ratio; }
                 this.x += this.vx; this.y += this.vy;
-
                 let currentFriction = activePerks.some(p => p.id === 'ice') ? 0.994 : FRICTION;
-                this.vx *= currentFriction;
-                this.vy *= currentFriction;
-
-                if (Math.abs(this.vx) < 0.05) this.vx = 0;
-                if (Math.abs(this.vy) < 0.05) this.vy = 0;
-
+                this.vx *= currentFriction; this.vy *= currentFriction;
+                if (Math.abs(this.vx) < 0.05) this.vx = 0; if (Math.abs(this.vy) < 0.05) this.vy = 0;
                 let hitWall = false;
-                
                 if (this.x - this.radius <= 0) { this.x = this.radius; this.vx *= -1; hitWall = true; } 
                 else if (this.x + this.radius >= canvas.width) { this.x = canvas.width - this.radius; this.vx *= -1; hitWall = true; }
-                
                 if (this.y - this.radius <= 0) { this.y = this.radius; this.vy *= -1; hitWall = true; } 
                 else if (this.y + this.radius >= canvas.height) { this.y = canvas.height - this.radius; this.vy *= -1; hitWall = true; }
-
                 if (hitWall) playSound('wall');
-
                 let splitThreshold = activePerks.some(p => p.id === 'shield') ? 6.5 : MIN_SPEED_TO_SPLIT;
-
                 if (hitWall && this.type === 'target' && currentSpeed > splitThreshold && this.multiplyCooldown === 0 && balls.length < MAX_BALLS) {
                     this.multiply();
                 }
             }
-
             multiply() {
                 this.multiplyCooldown = 15; ballIdCounter++; 
                 let tRad = activePerks.some(p => p.id === 'mini') ? 10 : 15;
                 let newBall = new Ball(this.x, this.y, tRad, '#ff1111', 'target', ballIdCounter);
                 this.vx *= 0.8; this.vy *= 0.8;
                 newBall.vx = this.vx + (Math.random() * 6 - 3); newBall.vy = this.vy + (Math.random() * 6 - 3);
-                newBall.multiplyCooldown = 15; 
-                balls.push(newBall);
+                newBall.multiplyCooldown = 15; balls.push(newBall);
             }
+        }
+
+        // --- YENİ: GELECEK SİMÜLASYONU (Predictor) ---
+        function predictTrajectory(pullVx, pullVy) {
+            // Masanın birebir kopyasını oluştur (Sadece fizik için)
+            let simBalls = balls.map((b, index) => ({
+                id: index, x: b.x, y: b.y, vx: b.vx, vy: b.vy,
+                radius: b.radius, type: b.type, mass: b.mass
+            }));
+            
+            let simObstacles = obstacles.map(o => ({
+                x: o.x, y: o.y, r: o.r, isMoving: o.isMoving, vx: o.vx, vy: o.vy
+            }));
+
+            // Sadece hayatta kalanların değil, tüm topların yollarını hafızada tut
+            let paths = balls.map(b => ({ type: b.type, points: [{x: b.x, y: b.y}] }));
+            let pocketedTargetCount = 0;
+            
+            let simCue = simBalls.find(b => b.type === 'cue');
+            if (!simCue) return { paths, pocketedTargetCount };
+
+            simCue.vx = pullVx;
+            simCue.vy = pullVy;
+
+            let ghostActive = activePerks.some(p => p.id === 'ghost');
+            let isIce = activePerks.some(p => p.id === 'ice');
+            let isVortex = activePerks.some(p => p.id === 'vortex');
+
+            let STEPS = 150; // Zamanı 150 kare (2.5 saniye) ileri sar
+
+            for (let step = 0; step < STEPS; step++) {
+                if (isVortex) {
+                    simBalls.forEach(b => {
+                        pockets.forEach(p => {
+                            let d = Math.hypot(b.x - p.x, b.y - p.y);
+                            if (d < 75 && d > 0) {
+                                let forceFactor = b.type === 'cue' ? 0.04 : 0.3; 
+                                b.vx += ((p.x - b.x) / d) * forceFactor;
+                                b.vy += ((p.y - b.y) / d) * forceFactor;
+                            }
+                        });
+                    });
+                }
+
+                // Engel Çarpışmaları (Klonlarda)
+                for (let i = 0; i < simBalls.length; i++) {
+                    let b = simBalls[i];
+                    for (let j = 0; j < simObstacles.length; j++) {
+                        let o = simObstacles[j];
+                        if (b.type === 'cue' && o.isMoving) continue;
+                        let dx = b.x - o.x; let dy = b.y - o.y;
+                        let dist = Math.hypot(dx, dy);
+                        if (dist < b.radius + o.r) {
+                            let nx = dx / dist; let ny = dy / dist;
+                            let overlap = b.radius + o.r - dist;
+                            b.x += nx * overlap; b.y += ny * overlap;
+                            let rvx = b.vx - o.vx; let rvy = b.vy - o.vy;
+                            let v_dot = rvx * nx + rvy * ny;
+                            if (v_dot < 0) {
+                                b.vx -= 2 * v_dot * nx; b.vy -= 2 * v_dot * ny;
+                                b.vx *= 1.2; b.vy *= 1.2;
+                            }
+                        }
+                    }
+                }
+
+                // Topların Birbirine Çarpması (Klonlarda)
+                for (let i = 0; i < simBalls.length; i++) {
+                    for (let j = i + 1; j < simBalls.length; j++) {
+                        let b1 = simBalls[i]; let b2 = simBalls[j];
+                        let dx = b2.x - b1.x; let dy = b2.y - b1.y;
+                        let dist = Math.hypot(dx, dy);
+                        if (dist < 0.1) { dx = 0.1; dy = 0.1; dist = 0.14; }
+                        if (dist < b1.radius + b2.radius) {
+                            let isGhost = false;
+                            if (b1.type === 'cue' && ghostActive && b2.type === 'target') {
+                                b2.vx += b1.vx * 1.5; b2.vy += b1.vy * 1.5;
+                                ghostActive = false; isGhost = true;
+                            } else if (b2.type === 'cue' && ghostActive && b1.type === 'target') {
+                                b1.vx += b2.vx * 1.5; b1.vy += b2.vy * 1.5;
+                                ghostActive = false; isGhost = true;
+                            }
+                            if (isGhost) continue;
+                            let overlap = (b1.radius + b2.radius - dist) / 2;
+                            let nx = dx / dist; let ny = dy / dist;
+                            b1.x -= nx * overlap; b1.y -= ny * overlap;
+                            b2.x -= nx * overlap; b2.y -= ny * overlap; // Klon fizikte b2 zıt itilir (Hata engelleme)
+                            b2.x += nx * overlap * 2; b2.y += ny * overlap * 2; 
+
+                            let kx = b1.vx - b2.vx; let ky = b1.vy - b2.vy;
+                            let p = 2 * (nx * kx + ny * ky) / (b1.mass + b2.mass);
+                            b1.vx -= p * b2.mass * nx; b1.vy -= p * b2.mass * ny;
+                            b2.vx += p * b1.mass * nx; b2.vy += p * b1.mass * ny;
+                        }
+                    }
+                }
+
+                // Klonların Hareket Etmesi
+                let currentFriction = isIce ? 0.994 : FRICTION;
+                for (let i = 0; i < simBalls.length; i++) {
+                    let b = simBalls[i];
+                    let currentSpeed = Math.hypot(b.vx, b.vy);
+                    if (currentSpeed > MAX_SPEED) {
+                        let ratio = MAX_SPEED / currentSpeed; b.vx *= ratio; b.vy *= ratio;
+                    }
+                    b.x += b.vx; b.y += b.vy;
+                    b.vx *= currentFriction; b.vy *= currentFriction;
+                    
+                    if (Math.abs(b.vx) < 0.05) b.vx = 0;
+                    if (Math.abs(b.vy) < 0.05) b.vy = 0;
+
+                    let hitWall = false;
+                    if (b.x - b.radius <= 0) { b.x = b.radius; b.vx *= -1; hitWall = true; }
+                    else if (b.x + b.radius >= canvas.width) { b.x = canvas.width - b.radius; b.vx *= -1; hitWall = true; }
+                    if (b.y - b.radius <= 0) { b.y = b.radius; b.vy *= -1; hitWall = true; }
+                    else if (b.y + b.radius >= canvas.height) { b.y = canvas.height - b.radius; b.vy *= -1; hitWall = true; }
+
+                    if (hitWall && b.type === 'cue' && ghostActive) {
+                        b.vx *= 0.5; b.vy *= 0.5;
+                    }
+
+                    // İz Bırak (Sadece gözle görülür hızı olanlar ve performansı korumak için 2 karede 1 iz atar)
+                    if (step % 2 === 0 && Math.hypot(b.vx, b.vy) > 0.5) {
+                        paths[b.id].points.push({x: b.x, y: b.y});
+                    }
+                }
+
+                // Klonların Deliklere Düşmesi
+                for (let i = simBalls.length - 1; i >= 0; i--) {
+                    let b = simBalls[i];
+                    for (let p of pockets) {
+                        if (Math.hypot(b.x - p.x, b.y - p.y) < p.r) {
+                            if (b.type === 'target') pocketedTargetCount++;
+                            simBalls.splice(i, 1);
+                            break;
+                        }
+                    }
+                }
+
+                simObstacles.forEach(o => {
+                    if (o.isMoving) {
+                        o.x += o.vx; o.y += o.vy;
+                        if (o.x - o.r < 0) { o.x = o.r; o.vx *= -1; }
+                        if (o.x + o.r > canvas.width) { o.x = canvas.width - o.r; o.vx *= -1; }
+                        if (o.y - o.r < 0) { o.y = o.r; o.vy *= -1; }
+                        if (o.y + o.r > canvas.height) { o.y = canvas.height - o.r; o.vy *= -1; }
+                    }
+                });
+            }
+            return { paths, pocketedTargetCount };
         }
 
         function triggerExplosion(x, y, color = null) {
@@ -377,71 +483,47 @@
         }
 
         function startNewRun() {
-            activePerks = [];
-            currentLevel = 1;
-            totalShots = 0;
-            updateHUDText();
-            startLevel();
+            activePerks = []; currentLevel = 1; totalShots = 0;
+            updateHUDText(); startLevel();
         }
 
         function startLevel() {
-            gameState = 'playing';
-            gameEnded = false;
+            gameState = 'playing'; gameEnded = false;
             balls = []; particles = []; comboTexts = []; obstacles = [];
-            ballIdCounter = 1; currentCombo = 0;
-            comboAppliedThisShot = false;
+            ballIdCounter = 1; currentCombo = 0; comboAppliedThisShot = false;
             
-            cueBall = new Ball(200, 600, 15, '#ecf0f1', 'cue'); 
-            balls.push(cueBall);
+            cueBall = new Ball(200, 600, 15, '#ecf0f1', 'cue'); balls.push(cueBall);
 
             let targetCount = currentLevel;
             let targetRadius = activePerks.some(p => p.id === 'mini') ? 10 : 15;
 
             for(let i=0; i<targetCount; i++) {
-                let tx = 50 + Math.random() * 300;
-                let ty = 50 + Math.random() * 350; 
+                let tx = 50 + Math.random() * 300; let ty = 50 + Math.random() * 350; 
                 balls.push(new Ball(tx, ty, targetRadius, '#ff1111', 'target', ballIdCounter++));
             }
 
-            let obsCount = Math.floor(currentLevel / 2); 
-            if (obsCount > 4) obsCount = 4; 
-            
+            let obsCount = Math.floor(currentLevel / 2); if (obsCount > 4) obsCount = 4; 
             for (let i=0; i<obsCount; i++) {
                 let isMoving = currentLevel >= 5 && Math.random() > 0.5; 
-                let ox = 80 + Math.random() * 240;
-                let oy = 250 + Math.random() * 200; 
+                let ox = 80 + Math.random() * 240; let oy = 250 + Math.random() * 200; 
                 obstacles.push(new Obstacle(ox, oy, 25, isMoving));
             }
 
-            ballCountEl.innerText = balls.length;
-            canvas.style.pointerEvents = 'auto'; 
+            ballCountEl.innerText = balls.length; canvas.style.pointerEvents = 'auto'; 
         }
 
         function showUpgrades() {
-            gameState = 'upgrading';
-            upgradeOverlay.style.display = 'flex';
-            cardsContainer.innerHTML = '';
+            gameState = 'upgrading'; upgradeOverlay.style.display = 'flex'; cardsContainer.innerHTML = '';
             canvas.style.pointerEvents = 'none';
             
             let available = ALL_PERKS.filter(p => !activePerks.find(ap => ap.id === p.id));
-            available.sort(() => Math.random() - 0.5);
-            let choices = available.slice(0, 3); 
+            available.sort(() => Math.random() - 0.5); let choices = available.slice(0, 3); 
 
-            if(choices.length === 0) {
-                applyUpgrade(null);
-                return;
-            }
+            if(choices.length === 0) { applyUpgrade(null); return; }
 
             choices.forEach(perk => {
-                let card = document.createElement('div');
-                card.className = 'card';
-                card.style.borderColor = perk.color;
-                card.innerHTML = `
-                    <div class="card-title" style="color:${perk.color}">${perk.title}</div>
-                    <div class="card-pro">${perk.pro}</div>
-                    <div class="card-con">${perk.con}</div>
-                `;
-                
+                let card = document.createElement('div'); card.className = 'card'; card.style.borderColor = perk.color;
+                card.innerHTML = `<div class="card-title" style="color:${perk.color}">${perk.title}</div><div class="card-pro">${perk.pro}</div><div class="card-con">${perk.con}</div>`;
                 card.addEventListener('mousedown', () => applyUpgrade(perk));
                 card.addEventListener('touchstart', (e) => { e.preventDefault(); applyUpgrade(perk); });
                 cardsContainer.appendChild(card);
@@ -449,17 +531,12 @@
         }
 
         function applyUpgrade(perk) {
-            playSound('powerup');
-            if(perk) activePerks.push(perk);
-            upgradeOverlay.style.display = 'none';
-            currentLevel++;
-            updateHUDText();
-            startLevel();
+            playSound('powerup'); if(perk) activePerks.push(perk);
+            upgradeOverlay.style.display = 'none'; currentLevel++; updateHUDText(); startLevel();
         }
 
         function updateHUDText() {
-            shotCountEl.innerText = totalShots;
-            levelDisplayEl.innerText = currentLevel;
+            shotCountEl.innerText = totalShots; levelDisplayEl.innerText = currentLevel;
             perksDisplayEl.innerText = activePerks.length > 0 ? activePerks.map(p => p.title.split(' ')[1]).join(', ') : 'Yok';
         }
 
@@ -468,22 +545,16 @@
                 let b = balls[i];
                 for (let j = 0; j < obstacles.length; j++) {
                     let o = obstacles[j];
-                    
-                    // YENİ: Beyaz top hareketli engellerin içinden geçer (Hayalet Modu)
                     if (b.type === 'cue' && o.isMoving) continue;
-
                     let dx = b.x - o.x; let dy = b.y - o.y;
                     let dist = Math.hypot(dx, dy);
-                    
                     if (dist < b.radius + o.r) {
                         playSound('bumper');
                         let nx = dx / dist; let ny = dy / dist;
                         let overlap = b.radius + o.r - dist;
                         b.x += nx * overlap; b.y += ny * overlap;
-
                         let rvx = b.vx - o.vx; let rvy = b.vy - o.vy;
                         let v_dot = rvx * nx + rvy * ny;
-
                         if (v_dot < 0) {
                             b.vx -= 2 * v_dot * nx; b.vy -= 2 * v_dot * ny;
                             b.vx *= 1.2; b.vy *= 1.2;
@@ -497,26 +568,20 @@
                     let b1 = balls[i]; let b2 = balls[j];
                     let dx = b2.x - b1.x; let dy = b2.y - b1.y;
                     let dist = Math.hypot(dx, dy);
-
                     if (dist < 0.1) { dx = 0.1; dy = 0.1; dist = 0.14; }
-
                     if (dist < b1.radius + b2.radius) {
                         playSound('collide', 1 + (Math.random() * 0.2 - 0.1));
-
                         let isCueTargetHit = (b1.type === 'cue' && b2.type === 'target') || (b2.type === 'cue' && b1.type === 'target');
                         if (isCueTargetHit && activePerks.some(p => p.id === 'explode') && cueBall.canExplode) {
                             cueBall.canExplode = false; 
                             let impactX = (b1.x + b2.x) / 2; let impactY = (b1.y + b2.y) / 2;
-                            triggerExplosion(impactX, impactY, '#ff3300');
-                            playSound('powerup'); 
-                            
+                            triggerExplosion(impactX, impactY, '#ff3300'); playSound('powerup'); 
                             balls.forEach(b => {
                                 if (b.type === 'target') {
                                     let pDist = Math.hypot(b.x - impactX, b.y - impactY);
                                     if (pDist < 160 && pDist > 0) {
                                         let force = (160 - pDist) * 0.09;
-                                        b.vx += ((b.x - impactX) / pDist) * force;
-                                        b.vy += ((b.y - impactY) / pDist) * force;
+                                        b.vx += ((b.x - impactX) / pDist) * force; b.vy += ((b.y - impactY) / pDist) * force;
                                     }
                                 }
                             });
@@ -526,10 +591,8 @@
                         let nx = dx / dist; let ny = dy / dist;
                         b1.x -= nx * overlap; b1.y -= ny * overlap;
                         b2.x += nx * overlap; b2.y += ny * overlap;
-
                         let kx = b1.vx - b2.vx; let ky = b1.vy - b2.vy;
                         let p = 2 * (nx * kx + ny * ky) / (b1.mass + b2.mass);
-
                         b1.vx -= p * b2.mass * nx; b1.vy -= p * b2.mass * ny;
                         b2.vx += p * b1.mass * nx; b2.vy += p * b1.mass * ny;
                     }
@@ -546,25 +609,18 @@
                             playSound('pocket', 0);
                             ball.x = 200; ball.y = 600; ball.vx = 0; ball.vy = 0;
                         } else {
-                            currentCombo++;
-                            playSound('pocket', currentCombo);
-                            triggerExplosion(ball.x, ball.y);
-                            
+                            currentCombo++; playSound('pocket', currentCombo); triggerExplosion(ball.x, ball.y);
                             let comboTextStr = "KOMBO X" + currentCombo;
                             if (currentCombo >= 8) comboTextStr = "KAOS X" + currentCombo;
                             else if (currentCombo >= 5) comboTextStr = "MEGA X" + currentCombo;
                             else if (currentCombo >= 3) comboTextStr = "SÜPER X" + currentCombo;
-
                             comboTexts.push(new ComboText(ball.x, ball.y, comboTextStr));
 
                             if (currentCombo > 1 && activePerks.some(p => p.id === 'combo_score') && !comboAppliedThisShot) {
-                                totalShots--; 
-                                shotCountEl.innerText = totalShots;
-                                comboAppliedThisShot = true;
+                                totalShots--; shotCountEl.innerText = totalShots; comboAppliedThisShot = true;
                                 comboTexts.push(new ComboText(ball.x, ball.y + 25, "-1 ATIŞ SİLİNDİ", true));
                                 playSound('powerup');
                             }
-
                             balls.splice(i, 1);
                         }
                         break; 
@@ -591,8 +647,7 @@
                         let d = Math.hypot(b.x - p.x, b.y - p.y);
                         if (d < 75 && d > 0) {
                             let forceFactor = b.type === 'cue' ? 0.04 : 0.3; 
-                            b.vx += ((p.x - b.x) / d) * forceFactor;
-                            b.vy += ((p.y - b.y) / d) * forceFactor;
+                            b.vx += ((p.x - b.x) / d) * forceFactor; b.vy += ((p.y - b.y) / d) * forceFactor;
                         }
                     });
                 });
@@ -600,30 +655,17 @@
 
             pockets.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fillStyle = '#111'; ctx.fill(); ctx.closePath(); });
 
-            obstacles.forEach(obs => {
-                if(gameState === 'playing') obs.update();
-                obs.draw();
-            });
+            obstacles.forEach(obs => { if(gameState === 'playing') obs.update(); obs.draw(); });
 
-            if (gameState === 'playing') {
-                checkCollisions();
-                checkPockets();
-            }
+            if (gameState === 'playing') { checkCollisions(); checkPockets(); }
 
-            balls.forEach(ball => { 
-                if (gameState === 'playing') ball.update(); 
-                ball.draw(); 
-            });
+            balls.forEach(ball => { if (gameState === 'playing') ball.update(); ball.draw(); });
 
             for (let i = particles.length - 1; i >= 0; i--) { 
-                if (gameState === 'playing') particles[i].update(); 
-                particles[i].draw(); 
-                if (particles[i].alpha <= 0) particles.splice(i, 1); 
+                if (gameState === 'playing') particles[i].update(); particles[i].draw(); if (particles[i].alpha <= 0) particles.splice(i, 1); 
             }
             for (let i = comboTexts.length - 1; i >= 0; i--) { 
-                if (gameState === 'playing') comboTexts[i].update(); 
-                comboTexts[i].draw(); 
-                if (comboTexts[i].alpha <= 0) comboTexts.splice(i, 1); 
+                if (gameState === 'playing') comboTexts[i].update(); comboTexts[i].draw(); if (comboTexts[i].alpha <= 0) comboTexts.splice(i, 1); 
             }
 
             if (gameState === 'playing' && balls.every(b => Math.hypot(b.vx, b.vy) < 0.1)) currentCombo = 0;
@@ -631,12 +673,10 @@
             if (gameState === 'playing') {
                 let targetBalls = balls.filter(b => b.type === 'target');
                 if (targetBalls.length === 0 && balls.length > 0) {
-                    gameState = 'level_clear'; 
-                    if (!gameEnded) { playSound('win'); gameEnded = true; }
+                    gameState = 'level_clear'; if (!gameEnded) { playSound('win'); gameEnded = true; }
                     setTimeout(showUpgrades, 1000); 
                 } else if (balls.length >= MAX_BALLS) {
-                    gameState = 'gameover';
-                    if (!gameEnded) { playSound('gameover'); gameEnded = true; }
+                    gameState = 'gameover'; if (!gameEnded) { playSound('gameover'); gameEnded = true; }
                 }
             }
 
@@ -646,69 +686,44 @@
                 drawEndScreen("🎉 ODA TEMİZLENDİ", "Yeni özellikler yükleniyor...", "#2ecc71");
             }
 
+            // --- YENİ GELECEK GÖSTERİMİ VE TAHMİN ÇİZİMLERİ ---
             if (gameState === 'playing' && isDragging && cueBall) {
                 let dx = dragStart.x - dragCurrent.x; 
                 let dy = dragStart.y - dragCurrent.y;
                 let pullDist = Math.hypot(dx, dy);
 
                 if (pullDist > 0.5) {
+                    if (pullDist > 200) { dx = (dx / pullDist) * 200; dy = (dy / pullDist) * 200; }
+                    
+                    // Simülatörü çalıştır
+                    let prediction = predictTrajectory(dx * 0.15, dy * 0.15);
+
+                    // 1. Simüle Edilmiş Tüm Rota Çizgilerini Çiz
+                    prediction.paths.forEach(pathObj => {
+                        if (pathObj.points.length < 2) return;
+                        ctx.beginPath();
+                        ctx.moveTo(pathObj.points[0].x, pathObj.points[0].y);
+                        for (let i = 1; i < pathObj.points.length; i++) {
+                            ctx.lineTo(pathObj.points[i].x, pathObj.points[i].y);
+                        }
+                        
+                        if (pathObj.type === 'cue') {
+                            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                            ctx.lineWidth = 2.5;
+                            ctx.setLineDash([5, 8]);
+                        } else {
+                            // Kırmızı hedef topların rotası
+                            ctx.strokeStyle = 'rgba(255, 50, 50, 0.7)';
+                            ctx.lineWidth = 1.5;
+                            ctx.setLineDash([3, 5]);
+                        }
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                    });
+
+                    // 2. Lazerin üzerindeki Dinamik Güç Barını Çiz
                     let dirX = dx / pullDist; 
                     let dirY = dy / pullDist;
-
-                    let min_t = Infinity;
-                    let hitObj = null;
-                    let isObstacle = false;
-
-                    balls.forEach(b => {
-                        if (b.type !== 'target') return;
-                        let vX = cueBall.x - b.x; let vY = cueBall.y - b.y;
-                        let b_dot = 2 * (vX * dirX + vY * dirY);
-                        let c_val = (vX * vX + vY * vY) - Math.pow(cueBall.radius + b.radius, 2);
-                        let delta = b_dot * b_dot - 4 * c_val;
-                        if (delta >= 0) {
-                            let t = (-b_dot - Math.sqrt(delta)) / 2;
-                            if (t > 0 && t < min_t) { min_t = t; hitObj = b; isObstacle = false; }
-                        }
-                    });
-
-                    obstacles.forEach(o => {
-                        // YENİ: Lazer nişangah hareketli engelleri hesaplamaz çünkü onlara çarpmayacaksın
-                        if (o.isMoving) return; 
-
-                        let vX = cueBall.x - o.x; let vY = cueBall.y - o.y;
-                        let b_dot = 2 * (vX * dirX + vY * dirY);
-                        let c_val = (vX * vX + vY * vY) - Math.pow(cueBall.radius + o.r, 2);
-                        let delta = b_dot * b_dot - 4 * c_val;
-                        if (delta >= 0) {
-                            let t = (-b_dot - Math.sqrt(delta)) / 2;
-                            if (t > 0 && t < min_t) { min_t = t; hitObj = o; isObstacle = true; }
-                        }
-                    });
-
-                    if (hitObj && min_t < 1500) {
-                        let impactX = cueBall.x + dirX * min_t;
-                        let impactY = cueBall.y + dirY * min_t;
-
-                        ctx.beginPath(); ctx.moveTo(cueBall.x, cueBall.y); ctx.lineTo(impactX, impactY);
-                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]); ctx.stroke(); ctx.setLineDash([]);
-
-                        ctx.beginPath(); ctx.arc(impactX, impactY, cueBall.radius, 0, Math.PI * 2);
-                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)'; ctx.lineWidth = 2; ctx.stroke();
-
-                        if (!isObstacle) {
-                            let outDx = hitObj.x - impactX; let outDy = hitObj.y - impactY;
-                            let outDist = Math.hypot(outDx, outDy);
-                            outDx /= outDist; outDy /= outDist;
-
-                            ctx.beginPath(); ctx.moveTo(hitObj.x, hitObj.y); ctx.lineTo(hitObj.x + outDx * 3000, hitObj.y + outDy * 3000);
-                            ctx.strokeStyle = 'rgba(255, 17, 17, 0.8)'; ctx.lineWidth = 3; ctx.setLineDash([8, 8]); ctx.stroke(); ctx.setLineDash([]);
-                        }
-
-                    } else {
-                        ctx.beginPath(); ctx.moveTo(cueBall.x, cueBall.y); ctx.lineTo(cueBall.x + dirX * 1500, cueBall.y + dirY * 1500);
-                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)'; ctx.lineWidth = 2; ctx.setLineDash([10, 15]); ctx.stroke(); ctx.setLineDash([]); 
-                    }
-
                     let clampedPull = Math.min(pullDist, 200);
                     let speedPercent = clampedPull / 200;
                     let powerLength = speedPercent * 100; 
@@ -717,10 +732,33 @@
                     ctx.beginPath(); ctx.moveTo(cueBall.x + dirX * 18, cueBall.y + dirY * 18); ctx.lineTo(cueBall.x + dirX * (18 + powerLength), cueBall.y + dirY * (18 + powerLength));
                     ctx.strokeStyle = `rgb(${barR}, ${barG}, 40)`; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.stroke();
 
+                    // 3. Güç Yüzdesi Yazısı
                     ctx.fillStyle = `rgb(${barR}, ${barG}, 40)`; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
                     let perpX = -dirY; let perpY = dirX;
                     ctx.save(); ctx.shadowColor = 'black'; ctx.shadowBlur = 3;
                     ctx.fillText(`%${Math.floor(speedPercent * 100)}`, cueBall.x + dirX * (25 + powerLength) + perpX * 12, cueBall.y + dirY * (25 + powerLength) + perpY * 12);
+                    ctx.restore();
+
+                    // 4. PARMAĞIN YANINDA: KAÇ TOP GİRECEK METNİ ÇİZİMİ
+                    ctx.save();
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    ctx.shadowColor = 'black';
+                    ctx.shadowBlur = 4;
+                    
+                    // Yazı, mobilde parmağın hemen üstünde / sağında çıksın ki parmak yazıyı kapatmasın
+                    let textPosX = dragCurrent.x + 25;
+                    let textPosY = dragCurrent.y - 25;
+
+                    if (prediction.pocketedTargetCount > 0) {
+                        ctx.fillStyle = '#2ecc71'; // Yeşil (Girecek)
+                        ctx.font = 'bold 18px Arial';
+                        ctx.fillText(`+${prediction.pocketedTargetCount} GİRECEK!`, textPosX, textPosY);
+                    } else {
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'; // Sönük Beyaz (0 top)
+                        ctx.font = '14px Arial';
+                        ctx.fillText(`0 TOP`, textPosX, textPosY);
+                    }
                     ctx.restore();
                 }
             }
