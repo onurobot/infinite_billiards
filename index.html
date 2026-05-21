@@ -204,7 +204,7 @@
         let balls = [];
         let particles = []; 
         let comboTexts = []; 
-        let obstacles = []; // YENİ: Engeller dizisi
+        let obstacles = []; 
         
         let pockets = [
             {x: 0, y: 0, r: 40}, {x: 400, y: 0, r: 40},       
@@ -221,7 +221,6 @@
         let ballIdCounter = 1; 
         let currentCombo = 0; 
 
-        // YENİ: Engel (Tampon) Sınıfı
         class Obstacle {
             constructor(x, y, r, isMoving) {
                 this.x = x; this.y = y; this.r = r;
@@ -395,24 +394,22 @@
             cueBall = new Ball(200, 600, 15, '#ecf0f1', 'cue'); 
             balls.push(cueBall);
 
-            // YENİ: Top sayısı doğrudan Seviye numarasına eşittir.
             let targetCount = currentLevel;
             let targetRadius = activePerks.some(p => p.id === 'mini') ? 10 : 15;
 
             for(let i=0; i<targetCount; i++) {
                 let tx = 50 + Math.random() * 300;
-                let ty = 50 + Math.random() * 350; // Masanın üst yarısı
+                let ty = 50 + Math.random() * 350; 
                 balls.push(new Ball(tx, ty, targetRadius, '#ff1111', 'target', ballIdCounter++));
             }
 
-            // YENİ: Engellerin Doğuşu (Level 2'de başlar, Level 5'te hareketlenir)
             let obsCount = Math.floor(currentLevel / 2); 
-            if (obsCount > 4) obsCount = 4; // Maksimum 4 engel
+            if (obsCount > 4) obsCount = 4; 
             
             for (let i=0; i<obsCount; i++) {
                 let isMoving = currentLevel >= 5 && Math.random() > 0.5; 
                 let ox = 80 + Math.random() * 240;
-                let oy = 250 + Math.random() * 200; // Masanın orta-alt kısmı
+                let oy = 250 + Math.random() * 200; 
                 obstacles.push(new Obstacle(ox, oy, 25, isMoving));
             }
 
@@ -467,11 +464,14 @@
         }
 
         function checkCollisions() {
-            // Toplar ve Engeller (Bumperlar)
             for (let i = 0; i < balls.length; i++) {
                 let b = balls[i];
                 for (let j = 0; j < obstacles.length; j++) {
                     let o = obstacles[j];
+                    
+                    // YENİ: Beyaz top hareketli engellerin içinden geçer (Hayalet Modu)
+                    if (b.type === 'cue' && o.isMoving) continue;
+
                     let dx = b.x - o.x; let dy = b.y - o.y;
                     let dist = Math.hypot(dx, dy);
                     
@@ -485,7 +485,6 @@
                         let v_dot = rvx * nx + rvy * ny;
 
                         if (v_dot < 0) {
-                            // Çarptığında 1.2x daha güçlü seker (Langırt etkisi)
                             b.vx -= 2 * v_dot * nx; b.vy -= 2 * v_dot * ny;
                             b.vx *= 1.2; b.vy *= 1.2;
                         }
@@ -493,7 +492,6 @@
                 }
             }
 
-            // Toplar kendi arası
             for (let i = 0; i < balls.length; i++) {
                 for (let j = i + 1; j < balls.length; j++) {
                     let b1 = balls[i]; let b2 = balls[j];
@@ -559,7 +557,6 @@
 
                             comboTexts.push(new ComboText(ball.x, ball.y, comboTextStr));
 
-                            // SİHİRLİ KOMBO ÖZELLİĞİ
                             if (currentCombo > 1 && activePerks.some(p => p.id === 'combo_score') && !comboAppliedThisShot) {
                                 totalShots--; 
                                 shotCountEl.innerText = totalShots;
@@ -603,7 +600,6 @@
 
             pockets.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fillStyle = '#111'; ctx.fill(); ctx.closePath(); });
 
-            // Engelleri Çiz ve Güncelle
             obstacles.forEach(obs => {
                 if(gameState === 'playing') obs.update();
                 obs.draw();
@@ -663,7 +659,6 @@
                     let hitObj = null;
                     let isObstacle = false;
 
-                    // Top Tahmini
                     balls.forEach(b => {
                         if (b.type !== 'target') return;
                         let vX = cueBall.x - b.x; let vY = cueBall.y - b.y;
@@ -676,8 +671,10 @@
                         }
                     });
 
-                    // Engel Tahmini
                     obstacles.forEach(o => {
+                        // YENİ: Lazer nişangah hareketli engelleri hesaplamaz çünkü onlara çarpmayacaksın
+                        if (o.isMoving) return; 
+
                         let vX = cueBall.x - o.x; let vY = cueBall.y - o.y;
                         let b_dot = 2 * (vX * dirX + vY * dirY);
                         let c_val = (vX * vX + vY * vY) - Math.pow(cueBall.radius + o.r, 2);
@@ -748,7 +745,7 @@
 
             const pos = getPointerPos(e);
             isDragging = true; dragStart = {x: pos.x, y: pos.y}; dragCurrent = {x: pos.x, y: pos.y};
-            comboAppliedThisShot = false; // Yeni atışta kombo ödülünü sıfırla
+            comboAppliedThisShot = false; 
         }
 
         function handleMove(e) {
